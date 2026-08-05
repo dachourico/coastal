@@ -1,0 +1,77 @@
+Cultivation Tools:
+    
+    #### TO DO ####
+    
+    - plantings from plant generator
+        - accepts 
+            -plantings_csv of strain_name, plant_count
+            -inventory_csv to get source_plant
+
+        -batch_name logic
+            -Batch name ex: F4C20
+            -Strain abbreviation via strains.py lookup
+            -date in yyyymmdd format
+
+            {batch_name}-{strain_abbreviation}-{date}
+
+        - returns csv
+            -mother_tag, 
+            -batch_name, 
+            -batch_type, 
+            -count, 
+            -strain, 
+            -location, 
+            -sublocation, 
+            -license, 
+            -date yyyy-mm-dd
+
+        Order of Operations:
+
+            1. Greet and ask for plant batch label
+            2. Ask for CSV with raw data
+            3. Ask for CSV with current inventory
+            4. Get strain name and plant count from raw data
+            5. Make sure strain name matches strain case in strains.py dict.
+            6. Take strain name and get source plant from inventory
+            7. Write new csv with all fields listed above
+    
+
+    - kill log generator
+        - accepts csv of plant tag, weight
+        - returns csv
+            - plant_tag
+            - waste_method
+            - weight
+            - units
+            - reason
+            - note
+            - date yyyy-mm-dd
+
+    - environment dashboard for desktop
+        - moisture/EC metrics
+        - temp/co2 metrics
+
+
+    ### DONE ###
+        - harvest sheet generator
+        - accepts csv of plant tag, weight, strain, harvest #
+        - returns csv
+            - plant_tag
+            - weight
+            - units
+            - drying_location
+            - sublocation
+            - harvest_batch
+            - license
+            - date yyyy-mm-dd
+
+Misc. data analysis:
+    - live wholesale menu dashboard
+    - packaging tracker
+    - harvest metrics dashboard
+    - cultivation spend tracker
+        - scrapes invoices for item SKU, name, price, date
+        - tracks spend per item and per time period
+        - low inventory notifications
+        - order triggers
+        - generates suggested order
