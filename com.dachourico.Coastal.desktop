@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Helper Functions
+Comment=Generate METRC clone batch and harvest CSV files
+Exec=/home/alexdacosta96/Work/coastal/coastal
+Icon=accessories-calculator
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=com.dachourico.Coastal
