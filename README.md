@@ -10,6 +10,13 @@ Run `./coastal` to open the GTK 4 desktop interface. It provides separate Clone
 Batches and Harvest tabs, native CSV file pickers, input validation, and opens
 the output folder after generating a file.
 
+The Room Layouts tab includes visual Flower 3 and Flower 4 planners. Add strain/count
+batches, drag them onto individual tables, save reusable layouts as JSON, and
+export the finished plant-by-plant assignment to CSV for staff. New strains can
+also be added to `clone_master/strains.py` from the planner. Use **Design new
+room** to describe additional level, rack, and table configurations; these are
+saved in `custom_rooms.json` and become available in the room selector.
+
 The app requires Python 3, PyGObject, and GTK 4.
 
 Run the automated tests with:

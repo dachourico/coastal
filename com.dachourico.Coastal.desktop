@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Helper Functions
-Comment=Generate METRC clone batch and harvest CSV files
+Name=Coastal Healing Workspace
+Comment=Plan cultivation rooms and generate METRC helper CSV files
 Exec=/home/alexdacosta96/Work/coastal/coastal
 Icon=accessories-calculator
 Terminal=false

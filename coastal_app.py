@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""GTK 4 desktop interface for Coastal's METRC CSV helpers."""
+"""GTK 4 desktop interface for the Coastal Healing Workspace."""
 
 import subprocess
 import sys
@@ -8,9 +8,10 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from coastal_core import generate_clone_batches, generate_harvest
+from room_layout_ui import RoomLayoutPage
 
 
 class FileRow(Gtk.Box):
@@ -58,17 +59,17 @@ class FileRow(Gtk.Box):
 
 class CoastalWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="Coastal Helper Functions")
-        self.set_default_size(620, 390)
+        super().__init__(application=app, title="Coastal Healing Workspace")
+        self.set_default_size(1220, 820)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
-        outer.set_margin_top(24)
-        outer.set_margin_bottom(24)
-        outer.set_margin_start(24)
-        outer.set_margin_end(24)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
         self.set_child(outer)
 
-        title = Gtk.Label(label="Helper Functions", xalign=0)
+        title = Gtk.Label(label="Coastal Healing Workspace", xalign=0)
         title.add_css_class("title-1")
         outer.append(title)
 
@@ -79,6 +80,7 @@ class CoastalWindow(Gtk.ApplicationWindow):
 
         stack.add_titled(self._clone_page(), "clones", "Clone batches")
         stack.add_titled(self._harvest_page(), "harvest", "Harvest")
+        stack.add_titled(RoomLayoutPage(self, self._set_status), "rooms", "Room layouts")
 
         self.status = Gtk.Label(xalign=0, wrap=True)
         self.status.add_css_class("dim-label")
@@ -128,14 +130,15 @@ class CoastalWindow(Gtk.ApplicationWindow):
         try:
             output = operation()
         except Exception as exc:
-            self.status.set_text(f"Could not generate CSV: {exc}")
-            self.status.remove_css_class("success")
-            self.status.add_css_class("error")
+            self._set_status(f"Could not generate CSV: {exc}", False)
             return
-        self.status.set_text(f"Created {output}")
-        self.status.remove_css_class("error")
-        self.status.add_css_class("success")
+        self._set_status(f"Created {output}", True)
         subprocess.Popen(["xdg-open", str(output.parent)])
+
+    def _set_status(self, message: str, success: bool) -> None:
+        self.status.set_text(message)
+        self.status.remove_css_class("error" if success else "success")
+        self.status.add_css_class("success" if success else "error")
 
 
 class CoastalApp(Gtk.Application):
@@ -143,6 +146,16 @@ class CoastalApp(Gtk.Application):
         super().__init__(application_id="com.dachourico.Coastal", flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
 
     def do_activate(self):
+        css = Gtk.CssProvider()
+        css.load_from_string("""
+            .plant-slot { padding: 0; min-width: 20px; min-height: 20px; font-size: 8px; }
+            .plant-slot.occupied { font-weight: bold; }
+            .table-label { padding: 0 2px; min-width: 24px; min-height: 20px; font-size: 9px; }
+            .caption { font-size: 10px; font-weight: bold; }
+        """)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
         window = self.props.active_window or CoastalWindow(self)
         window.present()
 
