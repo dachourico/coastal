@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 from clone_master.strains import strain_abbreviations
 from room_layout import (
@@ -16,9 +16,11 @@ from room_layout import (
     add_strain_to_file,
     build_room_spec,
     load_custom_rooms,
+    parse_batch_csv,
     save_custom_rooms,
     slot_id,
 )
+from strain_colors import strain_color, strain_css_class
 
 
 STRAINS_FILE = Path(__file__).parent / "clone_master" / "strains.py"
@@ -41,14 +43,25 @@ class RoomLayoutPage(Gtk.Box):
         self.selected_batch_id: int | None = None
         self.painting = False
         self.slot_buttons: dict[str, Gtk.Button] = {}
+        self.slot_color_classes: dict[str, str] = {}
+        self.strain_color_provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            self.strain_color_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+        )
         self.batch_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.capacity_label = Gtk.Label(xalign=1)
         self.capacity_label.add_css_class("heading")
         self.room_combo = Gtk.ComboBoxText()
-        self.strain_combo = Gtk.ComboBoxText.new_with_entry()
+        self.strain_entry = Gtk.Entry(placeholder_text="Type a strain name…")
         self.count = Gtk.SpinButton.new_with_range(1, 500, 1)
 
         self.set_margin_top(12)
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self._key_pressed)
+        self.add_controller(keys)
         self.append(self._toolbar())
 
         self.content = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
@@ -62,36 +75,51 @@ class RoomLayoutPage(Gtk.Box):
         self._reload_rooms(FLOWER_4.name)
         self._reload_strains()
         self._refresh()
+        GLib.idle_add(self._focus_strain_entry)
 
     def _toolbar(self) -> Gtk.Widget:
-        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        bar.add_css_class("frosted-panel")
+
+        room_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.room_combo.set_size_request(160, -1)
         self.room_combo.connect("changed", self._room_changed)
-        bar.append(self.room_combo)
+        room_row.append(self.room_combo)
         new_room = Gtk.Button(label="Design new room…")
+        new_room.set_tooltip_text("Design a new room (Ctrl+Shift+N)")
         new_room.connect("clicked", self._new_room_dialog)
-        bar.append(new_room)
+        room_row.append(new_room)
         spacer = Gtk.Box(hexpand=True)
-        bar.append(spacer)
-        bar.append(self.capacity_label)
-        for label, callback in (
-            ("Open layout…", self._open_layout),
-            ("Save layout…", self._save_layout),
-            ("Export CSV…", self._export_csv),
-            ("Clear", self._clear_layout),
+        room_row.append(spacer)
+        room_row.append(self.capacity_label)
+        bar.append(room_row)
+
+        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
+        for label, callback, shortcut in (
+            ("Open layout…", self._open_layout, "Ctrl+O"),
+            ("Save layout…", self._save_layout, "Ctrl+S"),
+            ("Export CSV…", self._export_csv, "Ctrl+E"),
+            ("Auto-fill", self._autofill, "Ctrl+Shift+F"),
+            ("Suggested split", self._suggested_split, "Ctrl+Shift+P"),
+            ("Clear", self._clear_layout, None),
         ):
             button = Gtk.Button(label=label)
+            if shortcut:
+                button.set_tooltip_text(f"{label.rstrip('…')} ({shortcut})")
             button.connect("clicked", callback)
-            bar.append(button)
+            button.set_valign(Gtk.Align.END)
+            action_row.append(button)
+        bar.append(action_row)
         return bar
 
     def _batch_panel(self) -> Gtk.Widget:
         panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        panel.add_css_class("frosted-panel")
         panel.set_margin_end(12)
         heading = Gtk.Label(label="Plant batches", xalign=0)
         heading.add_css_class("heading")
         panel.append(heading)
-        panel.append(self.strain_combo)
+        panel.append(self.strain_entry)
 
         count_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         count_row.append(Gtk.Label(label="Plants", xalign=0, hexpand=True))
@@ -100,10 +128,16 @@ class RoomLayoutPage(Gtk.Box):
         panel.append(count_row)
 
         add = Gtk.Button(label="Add batch")
+        add.set_tooltip_text("Add this strain batch (Ctrl+Enter)")
         add.add_css_class("suggested-action")
         add.connect("clicked", self._add_batch)
         panel.append(add)
+        import_batches = Gtk.Button(label="Import batches from CSV…")
+        import_batches.set_tooltip_text("Import strain,count rows (Ctrl+I)")
+        import_batches.connect("clicked", self._import_batches)
+        panel.append(import_batches)
         new_strain = Gtk.Button(label="Add new strain…")
+        new_strain.set_tooltip_text("Add a strain to the strain list (Ctrl+Shift+A)")
         new_strain.connect("clicked", self._add_strain_dialog)
         panel.append(new_strain)
 
@@ -116,6 +150,15 @@ class RoomLayoutPage(Gtk.Box):
         )
         instruction.add_css_class("dim-label")
         panel.append(instruction)
+        shortcuts = Gtk.Label(
+            label="Shortcuts: Ctrl+Enter add batch · Ctrl+Shift+Enter place selected batch · "
+                  "Ctrl+Shift+F auto-fill · Ctrl+Shift+P suggested split · Ctrl+Shift+A new strain · "
+                  "Ctrl+I import batches · Ctrl+S save · Ctrl+O open · Ctrl+E export",
+            xalign=0,
+            wrap=True,
+        )
+        shortcuts.add_css_class("dim-label")
+        panel.append(shortcuts)
 
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -123,8 +166,65 @@ class RoomLayoutPage(Gtk.Box):
         panel.append(scroller)
         return panel
 
+    def _key_pressed(self, _controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> bool:
+        modifiers = state & Gtk.accelerator_get_default_mod_mask()
+        control_only = modifiers == Gdk.ModifierType.CONTROL_MASK
+        control_shift = modifiers == (
+            Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
+        )
+        key = Gdk.keyval_to_lower(keyval)
+
+        if control_shift and keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self._place_selected_next()
+        elif control_only and keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self._add_batch(None)
+        elif control_shift and key == Gdk.KEY_a:
+            self._add_strain_dialog(None)
+        elif control_shift and key == Gdk.KEY_n:
+            self._new_room_dialog(None)
+        elif control_shift and key == Gdk.KEY_f:
+            self._autofill(None)
+        elif control_shift and key == Gdk.KEY_p:
+            self._suggested_split(None)
+        elif control_only and key == Gdk.KEY_o:
+            self._open_layout(None)
+        elif control_only and key == Gdk.KEY_s:
+            self._save_layout(None)
+        elif control_only and key == Gdk.KEY_e:
+            self._export_csv(None)
+        elif control_only and key == Gdk.KEY_i:
+            self._import_batches(None)
+        elif keyval == Gdk.KEY_Escape and self.painting:
+            self.painting = False
+            self.set_status("Stopped painting plant positions", True)
+        else:
+            return False
+        return True
+
+    def _place_selected_next(self) -> None:
+        batch_id = self.selected_batch_id
+        if batch_id is None or batch_id not in self.layout.batches:
+            self.set_status("Select an existing plant batch before placing it", False)
+            return
+        try:
+            placed = self.layout.place_across(batch_id, self.layout.room.snake_slot_ids())
+        except Exception as exc:
+            self.set_status(str(exc), False)
+            return
+        self._refresh()
+        remaining = self.layout.remaining_count(batch_id)
+        if placed:
+            self.set_status(
+                f"Placed {placed} plant{'s' if placed != 1 else ''} in the next open positions; "
+                f"{remaining} remaining in batch",
+                True,
+            )
+        else:
+            self.set_status("The room is full, or the selected batch is completely placed", False)
+
     def _room_panel(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5, vexpand=True)
+        box.add_css_class("frosted-panel")
         for level in sorted(self.layout.room.levels):
             box.append(self._level_page(level))
         return box
@@ -194,11 +294,7 @@ class RoomLayoutPage(Gtk.Box):
         return frame
 
     def _reload_strains(self, selected: str | None = None) -> None:
-        self.strain_combo.remove_all()
         names = sorted(strain_abbreviations, key=str.casefold)
-        for name in names:
-            self.strain_combo.append_text(name)
-        entry = self.strain_combo.get_child()
         completion = Gtk.EntryCompletion()
         model = Gtk.ListStore(str)
         for name in names:
@@ -208,12 +304,16 @@ class RoomLayoutPage(Gtk.Box):
         completion.set_inline_completion(True)
         completion.set_popup_completion(True)
         completion.set_popup_set_width(True)
-        entry.set_completion(completion)
-        entry.set_placeholder_text("Type a strain name…")
+        self.strain_entry.set_completion(completion)
         if selected in names:
-            self.strain_combo.set_active(names.index(selected))
-        elif names:
-            self.strain_combo.set_active(0)
+            self.strain_entry.set_text(selected)
+        else:
+            self.strain_entry.set_text("")
+
+    def _focus_strain_entry(self) -> bool:
+        self.strain_entry.grab_focus()
+        self.strain_entry.set_position(-1)
+        return False
 
     def _reload_rooms(self, selected: str) -> None:
         self.room_combo.remove_all()
@@ -237,18 +337,21 @@ class RoomLayoutPage(Gtk.Box):
 
     def _add_batch(self, _button) -> None:
         try:
-            typed = self.strain_combo.get_child().get_text().strip()
+            typed = self.strain_entry.get_text().strip()
             exact = next((name for name in strain_abbreviations if name.casefold() == typed.casefold()), None)
             matches = [name for name in strain_abbreviations if name.casefold().startswith(typed.casefold())]
             strain = exact or (matches[0] if len(matches) == 1 else "")
             if not strain and matches:
                 raise ValueError("Keep typing or choose a strain from the suggestions")
+            self.count.update()
             batch = self.layout.add_batch(strain, self.count.get_value_as_int())
         except Exception as exc:
             self.set_status(str(exc), False)
             return
         self.selected_batch_id = batch.id
         self.count.set_value(1)
+        self.strain_entry.set_text("")
+        self._focus_strain_entry()
         self._refresh()
         self.set_status(f"Added batch {batch.id}: {batch.count} {batch.strain}", True)
 
@@ -261,10 +364,20 @@ class RoomLayoutPage(Gtk.Box):
         row.set_margin_bottom(2)
         row.set_margin_start(2)
         row.set_margin_end(2)
+        swatch = Gtk.Label(label="●", tooltip_text=f"Color for {batch.strain}")
+        swatch.add_css_class("strain-swatch")
+        swatch.add_css_class(strain_css_class(batch.strain))
+        row.append(swatch)
         select = Gtk.Button(
-            label=f"#{batch.id}  {batch.strain}\n{placed}/{batch.count}",
             hexpand=True,
+            tooltip_text="Select this batch; Ctrl+Shift+Enter places it in the next open positions",
         )
+        select_label = Gtk.Label(
+            label=f"#{batch.id}  {batch.strain}\n{placed}/{batch.count}",
+            xalign=0,
+            wrap=True,
+        )
+        select.set_child(select_label)
         if batch_id == self.selected_batch_id:
             select.add_css_class("suggested-action")
         select.connect("clicked", lambda _button, value=batch_id: self._select_batch(value))
@@ -281,6 +394,7 @@ class RoomLayoutPage(Gtk.Box):
         return row
 
     def _refresh(self) -> None:
+        self._refresh_strain_colors()
         placed = self.layout.placed_total
         remaining = self.layout.capacity - placed
         self.capacity_label.set_text(f"{placed}/{self.layout.capacity} ({remaining} remaining)")
@@ -290,6 +404,8 @@ class RoomLayoutPage(Gtk.Box):
             self.batch_list.append(self._batch_row(batch_id))
 
         for slot, button in self.slot_buttons.items():
+            if old_class := self.slot_color_classes.pop(slot, None):
+                button.remove_css_class(old_class)
             batch_id = self.layout.assignments.get(slot)
             if batch_id is None:
                 button.set_label("·")
@@ -301,6 +417,23 @@ class RoomLayoutPage(Gtk.Box):
                 button.set_label(abbreviation[:3])
                 button.set_tooltip_text(f"{slot} — {batch.strain} (batch {batch_id}); click to remove")
                 button.add_css_class("occupied")
+                color_class = strain_css_class(batch.strain)
+                button.add_css_class(color_class)
+                self.slot_color_classes[slot] = color_class
+
+    def _refresh_strain_colors(self) -> None:
+        strains = set(strain_abbreviations)
+        strains.update(batch.strain for layout in self.layouts.values() for batch in layout.batches.values())
+        rules = []
+        for strain in sorted(strains, key=str.casefold):
+            css_class = strain_css_class(strain)
+            background, foreground = strain_color(strain)
+            rules.append(
+                f"button.plant-slot.{css_class} {{ "
+                f"background: {background}; color: {foreground}; border-color: {background}; }}\n"
+                f"label.strain-swatch.{css_class} {{ color: {background}; font-size: 18px; }}"
+            )
+        self.strain_color_provider.load_from_string("\n".join(rules))
 
     def _select_batch(self, batch_id: int) -> None:
         self.selected_batch_id = batch_id
@@ -405,6 +538,40 @@ class RoomLayoutPage(Gtk.Box):
         self._refresh()
         self.set_status("Layout cleared", True)
 
+    def _autofill(self, _button) -> None:
+        placed = self.layout.autofill_batches()
+        self._refresh()
+        remaining = sum(self.layout.remaining_count(batch_id) for batch_id in self.layout.batches)
+        if placed:
+            self.set_status(
+                f"Auto-filled {placed} plant{'s' if placed != 1 else ''}; "
+                f"{remaining} left unplaced",
+                True,
+            )
+        elif not self.layout.batches:
+            self.set_status("Add at least one plant batch before auto-filling", False)
+        else:
+            self.set_status("No complete rack-level section can be filled by the remaining batches", False)
+
+    def _suggested_split(self, _button) -> None:
+        placed = self.layout.suggested_split()
+        self._refresh()
+        remaining = sum(self.layout.remaining_count(batch_id) for batch_id in self.layout.batches)
+        if placed:
+            self.set_status(
+                f"Placed a proportional mix of {placed} plant{'s' if placed != 1 else ''}; "
+                f"{remaining} left unplaced",
+                True,
+            )
+        elif not self.layout.batches:
+            self.set_status("Add at least one plant batch before creating a suggested split", False)
+        else:
+            self.set_status(
+                "No proportional allocation can fill a complete rack-level section "
+                "without splitting a batch between levels",
+                False,
+            )
+
     def _chooser(self, title: str, action: Gtk.FileChooserAction, suffix: str, callback) -> None:
         chooser = Gtk.FileChooserNative(
             title=title,
@@ -425,6 +592,33 @@ class RoomLayoutPage(Gtk.Box):
 
     def _save_layout(self, _button) -> None:
         self._chooser(f"Save {self.layout.room.name} layout", Gtk.FileChooserAction.SAVE, "json", self._save_chosen)
+
+    def _import_batches(self, _button) -> None:
+        self._chooser(
+            "Import plant batches",
+            Gtk.FileChooserAction.OPEN,
+            "csv",
+            self._import_batches_chosen,
+        )
+
+    def _import_batches_chosen(self, chooser, response) -> None:
+        if response == Gtk.ResponseType.ACCEPT and (selected := chooser.get_file()) and selected.get_path():
+            try:
+                batches = parse_batch_csv(Path(selected.get_path()), tuple(strain_abbreviations))
+                added = [self.layout.add_batch(strain, count) for strain, count in batches]
+                self.selected_batch_id = added[-1].id
+                self._refresh()
+                self.strain_entry.set_text("")
+                self._focus_strain_entry()
+                total = sum(batch.count for batch in added)
+                self.set_status(
+                    f"Imported {len(added)} batch{'es' if len(added) != 1 else ''} "
+                    f"containing {total} plants",
+                    True,
+                )
+            except Exception as exc:
+                self.set_status(f"Could not import batches: {exc}", False)
+        chooser.destroy()
 
     def _save_chosen(self, chooser, response) -> None:
         if response == Gtk.ResponseType.ACCEPT and (selected := chooser.get_file()) and selected.get_path():

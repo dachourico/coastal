@@ -8,10 +8,13 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from coastal_core import generate_clone_batches, generate_harvest
 from room_layout_ui import RoomLayoutPage
+
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
 
 
 class FileRow(Gtk.Box):
@@ -62,25 +65,58 @@ class CoastalWindow(Gtk.ApplicationWindow):
         super().__init__(application=app, title="Coastal Healing Workspace")
         self.set_default_size(1220, 820)
 
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
-        outer.set_margin_top(12)
-        outer.set_margin_bottom(12)
-        outer.set_margin_start(12)
-        outer.set_margin_end(12)
-        self.set_child(outer)
+        workspace = Gtk.Overlay()
+        background = Gtk.Picture.new_for_filename(str(ASSET_DIR / "cannabis-leaf-background.png"))
+        background.set_content_fit(Gtk.ContentFit.COVER)
+        background.set_can_shrink(True)
+        workspace.set_child(background)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        outer.add_css_class("coastal-workspace")
+        outer.set_margin_top(10)
+        outer.set_margin_bottom(10)
+        outer.set_margin_start(10)
+        outer.set_margin_end(10)
+        workspace.add_overlay(outer)
+        self.set_child(workspace)
+
+        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
+        switcher = Gtk.StackSwitcher(stack=stack, halign=Gtk.Align.CENTER)
+        switcher.add_css_class("frosted-bubble")
+
+        top_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        top_bar.set_halign(Gtk.Align.FILL)
+
+        title_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+            valign=Gtk.Align.CENTER,
+        )
+        title_row.add_css_class("frosted-bubble")
+        title_row.set_halign(Gtk.Align.START)
+        logo = Gtk.Image.new_from_file(str(ASSET_DIR / "coastal-healing-logo.svg"))
+        logo.set_pixel_size(56)
+        logo.set_tooltip_text("Coastal Healing")
+        title_row.append(logo)
 
         title = Gtk.Label(label="Coastal Healing Workspace", xalign=0)
         title.add_css_class("title-1")
-        outer.append(title)
-
-        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
-        switcher = Gtk.StackSwitcher(stack=stack, halign=Gtk.Align.CENTER)
-        outer.append(switcher)
+        title_row.append(title)
+        top_bar.append(title_row)
+        top_bar.append(Gtk.Box(hexpand=True))
+        top_bar.append(switcher)
+        top_bar.append(Gtk.Box(hexpand=True))
+        outer.append(top_bar)
         outer.append(stack)
 
         stack.add_titled(self._clone_page(), "clones", "Clone batches")
         stack.add_titled(self._harvest_page(), "harvest", "Harvest")
-        stack.add_titled(RoomLayoutPage(self, self._set_status), "rooms", "Room layouts")
+
+        room_page = RoomLayoutPage(self, self._set_status)
+        room_page.set_hexpand(True)
+        room_page.set_vexpand(True)
+        stack.add_titled(room_page, "rooms", "Room layouts")
+        stack.set_visible_child_name("rooms")
 
         self.status = Gtk.Label(xalign=0, wrap=True)
         self.status.add_css_class("dim-label")
@@ -115,6 +151,7 @@ class CoastalWindow(Gtk.ApplicationWindow):
     @staticmethod
     def _page():
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        page.add_css_class("frosted-panel")
         page.set_margin_top(18)
         return page
 
@@ -152,6 +189,42 @@ class CoastalApp(Gtk.Application):
             .plant-slot.occupied { font-weight: bold; }
             .table-label { padding: 0 2px; min-width: 24px; min-height: 20px; font-size: 9px; }
             .caption { font-size: 10px; font-weight: bold; }
+            .coastal-workspace {
+                color: #123b2a;
+            }
+            .frosted-panel, .frosted-bubble {
+                background-color: rgba(241, 251, 246, 0.72);
+                border: 1px solid rgba(92, 174, 137, 0.72);
+                border-radius: 14px;
+                box-shadow: 0 5px 18px rgba(7, 42, 29, 0.30);
+            }
+            .frosted-panel {
+                padding: 12px;
+            }
+            .frosted-bubble {
+                background-color: rgba(241, 251, 246, 0.78);
+                padding: 6px 12px;
+            }
+            .coastal-workspace button,
+            .coastal-workspace entry,
+            .coastal-workspace spinbutton {
+                color: #123b2a;
+                background: rgba(247, 253, 250, 0.80);
+                border-color: rgba(55, 145, 105, 0.68);
+            }
+            .coastal-workspace button:hover {
+                background: rgba(207, 240, 224, 0.96);
+                border-color: #379169;
+            }
+            .coastal-workspace button.suggested-action {
+                color: white;
+                background: #3a9a70;
+                border-color: #2d7d59;
+            }
+            .coastal-workspace .card {
+                background-color: rgba(221, 244, 232, 0.58);
+                border-radius: 10px;
+            }
         """)
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION

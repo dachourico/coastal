@@ -11,13 +11,24 @@ from room_layout import (
     level_slot_ids,
     level_slots_from,
     load_custom_rooms,
+    parse_batch_csv,
+    proportional_allocations,
     save_custom_rooms,
     slot_ids,
     tables_for,
 )
+from strain_colors import strain_color, strain_css_class
 
 
 class RoomLayoutTests(unittest.TestCase):
+    def test_strain_colors_are_stable_distinct_and_readable(self):
+        wedding_cake = strain_color("Wedding Cake")
+        self.assertEqual(wedding_cake, strain_color("wedding cake"))
+        self.assertNotEqual(wedding_cake, strain_color("Apple Fritter"))
+        self.assertRegex(wedding_cake[0], r"^#[0-9a-f]{6}$")
+        self.assertIn(wedding_cake[1], ("#000000", "#ffffff"))
+        self.assertRegex(strain_css_class("Wedding Cake"), r"^strain-[0-9a-f]{12}$")
+
     def test_flower_4_capacity_and_tables(self):
         self.assertEqual(len(slot_ids()), 360)
         self.assertEqual(sum(rows * columns for _, rows, columns in tables_for(1, 1)), 24)
@@ -60,6 +71,86 @@ class RoomLayoutTests(unittest.TestCase):
         self.assertEqual(slots[0], "L1|R1|4x8 A|row1|plant1")
         self.assertEqual(slots[5], "L1|R1|4x8 A|row2|plant5")
         self.assertEqual(slots[9], "L1|R1|4x8 A|row2|plant1")
+
+    def test_whole_room_snake_order_advances_between_levels(self):
+        slots = FLOWER_3.snake_slot_ids()
+        level_one = FLOWER_3.level_slot_ids(1)
+        level_two = FLOWER_3.level_slot_ids(2)
+        self.assertEqual(slots, level_one + level_two)
+        self.assertEqual(slots[0], "L1|R1|4x8 A|row1|plant1")
+        self.assertEqual(slots[len(level_one)], "L2|R1|4x8 A|row1|plant1")
+
+    def test_next_available_placement_skips_occupied_slots(self):
+        layout = RoomLayout(FLOWER_3)
+        first = layout.add_batch("Wedding Cake", 1)
+        second = layout.add_batch("Apple Fritter", 3)
+        ordered = FLOWER_3.snake_slot_ids()
+        layout.place_across(first.id, ordered)
+        self.assertEqual(layout.place_across(second.id, ordered), 3)
+        self.assertEqual(
+            [slot for slot, batch_id in layout.assignments.items() if batch_id == second.id],
+            ordered[1:4],
+        )
+
+    def test_autofill_keeps_batches_on_single_levels(self):
+        room = build_room_spec("Small", "1 | 1 | Tray | 1 | 1 | 4\n2 | 1 | Tray | 1 | 1 | 4")
+        layout = RoomLayout(room)
+        first = layout.add_batch("Wedding Cake", 4)
+        second = layout.add_batch("Apple Fritter", 4)
+
+        self.assertEqual(layout.autofill_batches(), 8)
+        first_levels = {slot.split("|", 1)[0] for slot, value in layout.assignments.items() if value == first.id}
+        second_levels = {slot.split("|", 1)[0] for slot, value in layout.assignments.items() if value == second.id}
+        self.assertEqual(first_levels, {"L1"})
+        self.assertEqual(second_levels, {"L2"})
+
+    def test_autofill_leaves_excess_unplaced_instead_of_splitting(self):
+        room = build_room_spec("Small", "1 | 1 | Tray | 1 | 1 | 4\n2 | 1 | Tray | 1 | 1 | 4")
+        layout = RoomLayout(room)
+        batch = layout.add_batch("Wedding Cake", 6)
+
+        self.assertEqual(layout.autofill_batches(), 4)
+        self.assertEqual(layout.remaining_count(batch.id), 2)
+        assigned_levels = {slot.split("|", 1)[0] for slot in layout.assignments}
+        self.assertEqual(assigned_levels, {"L1"})
+
+    def test_autofill_only_fills_complete_rack_levels(self):
+        room = build_room_spec("Four racks", "1 | 1-4 | Rack | 1 | 2 | 10")
+        layout = RoomLayout(room)
+        batch = layout.add_batch("Wedding Cake", 65)
+
+        self.assertEqual(layout.autofill_batches(), 60)
+        self.assertEqual(layout.remaining_count(batch.id), 5)
+        occupied_by_rack = {
+            rack: sum(slot.startswith(f"L1|R{rack}|") for slot in layout.assignments)
+            for rack in range(1, 5)
+        }
+        self.assertEqual(sorted(occupied_by_rack.values()), [0, 20, 20, 20])
+
+    def test_suggested_split_uses_proportional_batch_representation(self):
+        room = build_room_spec(
+            "Split room",
+            "1 | 1-3 | Rack | 1 | 2 | 10\n2 | 1-2 | Rack | 1 | 2 | 10",
+        )
+        layout = RoomLayout(room)
+        first = layout.add_batch("Wedding Cake", 120)
+        second = layout.add_batch("Apple Fritter", 80)
+
+        self.assertEqual(proportional_allocations({first.id: 120, second.id: 80}, 100), {first.id: 60, second.id: 40})
+        self.assertEqual(layout.suggested_split(), 100)
+        self.assertEqual(layout.placed_count(first.id), 60)
+        self.assertEqual(layout.placed_count(second.id), 40)
+        for batch in (first, second):
+            levels = {
+                slot.split("|", 1)[0]
+                for slot, batch_id in layout.assignments.items()
+                if batch_id == batch.id
+            }
+            self.assertEqual(len(levels), 1)
+        for level in (1, 2):
+            for group in room.rack_slot_groups(level):
+                occupied = sum(slot in layout.assignments for slot in group)
+                self.assertIn(occupied, (0, len(group)))
 
     def test_single_position_painting_decrements_remaining(self):
         layout = RoomLayout()
@@ -117,6 +208,22 @@ class RoomLayoutTests(unittest.TestCase):
             self.assertEqual(namespace["strain_abbreviations"]["New Strain"], "NS")
             with self.assertRaises(ValueError):
                 add_strain_to_file(path, "new strain", "OTHER")
+
+    def test_parse_batch_csv_accepts_header_and_canonicalizes_strains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "batches.csv"
+            path.write_text("strain,count\nwedding cake,25\nApple Fritter,40\n", encoding="utf-8")
+            self.assertEqual(
+                parse_batch_csv(path, ("Wedding Cake", "Apple Fritter")),
+                [("Wedding Cake", 25), ("Apple Fritter", 40)],
+            )
+
+    def test_parse_batch_csv_rejects_invalid_rows_before_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "batches.csv"
+            path.write_text("Wedding Cake,25\nUnknown Strain,10\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unknown strain on CSV line 2"):
+                parse_batch_csv(path, ("Wedding Cake",))
 
 
 if __name__ == "__main__":

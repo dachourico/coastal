@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -78,6 +79,20 @@ class RoomSpec:
         except ValueError as exc:
             raise ValueError("Starting position is not on that level") from exc
         return slots[start:] + slots[:start]
+
+    def snake_slot_ids(self) -> list[str]:
+        """Return every position in level order, using each level's visual snake order."""
+        return [slot for level in sorted(self.levels) for slot in self.level_slot_ids(level)]
+
+    def rack_slot_groups(self, level: int) -> list[list[str]]:
+        """Return a level's rack-sized groups, each in visual snake order."""
+        if level not in self.levels:
+            raise ValueError(f"{self.name} does not have level {level}")
+        ordered = self.level_slot_ids(level)
+        return [
+            [slot for slot in ordered if slot.startswith(f"L{level}|R{rack}|")]
+            for rack in sorted(self.levels[level])
+        ]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -291,6 +306,83 @@ class RoomLayout:
     def place_on_table(self, batch_id: int, table_slots: list[str]) -> int:
         return self.place_across(batch_id, table_slots)
 
+    def autofill_batches(self) -> int:
+        """Fill whole rack-level groups without carrying a batch across levels."""
+        levels = sorted(self.room.levels)
+        cursor = 0
+        placed_total = 0
+
+        for batch_id in self.batches:
+            remaining = self.remaining_count(batch_id)
+            if remaining == 0:
+                continue
+
+            assigned_levels = {
+                int(slot.split("|", 1)[0][1:])
+                for slot, assigned_batch in self.assignments.items()
+                if assigned_batch == batch_id
+            }
+            if len(assigned_levels) > 1:
+                continue
+
+            if assigned_levels:
+                target_level = assigned_levels.pop()
+                candidates = [target_level]
+            else:
+                candidates = levels[cursor:]
+
+            for target_level in candidates:
+                empty_groups = [
+                    group for group in self.room.rack_slot_groups(target_level)
+                    if all(slot not in self.assignments for slot in group)
+                ]
+                chosen = _largest_whole_groups(empty_groups, remaining)
+                if chosen:
+                    cursor = max(cursor, levels.index(target_level))
+                    slots = [slot for group in chosen for slot in group]
+                    placed_total += self.place_across(batch_id, slots)
+                    break
+
+        return placed_total
+
+    def suggested_split(self) -> int:
+        """Fill whole rack groups proportionally without splitting batches across levels."""
+        levels = sorted(self.room.levels)
+        empty_capacity = sum(
+            len(group)
+            for level in levels
+            for group in self.room.rack_slot_groups(level)
+            if all(slot not in self.assignments for slot in group)
+        )
+        remaining = {batch_id: self.remaining_count(batch_id) for batch_id in self.batches}
+        allocations = proportional_allocations(remaining, empty_capacity)
+        cursor = 0
+        placed_total = 0
+
+        for batch_id, target in allocations.items():
+            if target == 0:
+                continue
+            assigned_levels = {
+                int(slot.split("|", 1)[0][1:])
+                for slot, assigned_batch in self.assignments.items()
+                if assigned_batch == batch_id
+            }
+            if len(assigned_levels) > 1:
+                continue
+            candidates = [assigned_levels.pop()] if assigned_levels else levels[cursor:]
+            for target_level in candidates:
+                empty_groups = [
+                    group for group in self.room.rack_slot_groups(target_level)
+                    if all(slot not in self.assignments for slot in group)
+                ]
+                chosen = _largest_whole_groups(empty_groups, min(target, remaining[batch_id]))
+                if chosen:
+                    cursor = max(cursor, levels.index(target_level))
+                    slots = [slot for group in chosen for slot in group]
+                    placed_total += self.place_across(batch_id, slots)
+                    break
+        return placed_total
+
     def clear_slot(self, slot: str) -> None:
         self.assignments.pop(slot, None)
 
@@ -357,6 +449,67 @@ class RoomLayout:
                     self.batches[batch_id].strain, batch_id,
                 ])
         return Path(path)
+
+
+def _largest_whole_groups(groups: list[list[str]], limit: int) -> list[list[str]]:
+    """Choose the earliest subset of whole groups that uses the most slots."""
+    best_indexes: tuple[int, ...] = ()
+    best_size = 0
+    for count in range(1, len(groups) + 1):
+        for indexes in itertools.combinations(range(len(groups)), count):
+            size = sum(len(groups[index]) for index in indexes)
+            if size <= limit and size > best_size:
+                best_indexes = indexes
+                best_size = size
+    return [groups[index] for index in best_indexes]
+
+
+def proportional_allocations(counts: dict[int, int], capacity: int) -> dict[int, int]:
+    """Apportion capacity by count using the largest-remainder method."""
+    positive = {key: max(0, count) for key, count in counts.items() if count > 0}
+    total = sum(positive.values())
+    target = min(max(0, capacity), total)
+    if not total or not target:
+        return {key: 0 for key in counts}
+    if target == total:
+        return {key: positive.get(key, 0) for key in counts}
+
+    allocations = {key: (count * target) // total for key, count in positive.items()}
+    remainders = sorted(
+        positive,
+        key=lambda key: (-(positive[key] * target % total), list(positive).index(key)),
+    )
+    for key in remainders[:target - sum(allocations.values())]:
+        allocations[key] += 1
+    return {key: allocations.get(key, 0) for key in counts}
+
+
+def parse_batch_csv(path: Path, valid_strains: list[str] | tuple[str, ...]) -> list[tuple[str, int]]:
+    """Read validated strain/count rows, accepting an optional header."""
+    canonical = {strain.casefold(): strain for strain in valid_strains}
+    batches: list[tuple[str, int]] = []
+    with Path(path).open(newline="", encoding="utf-8-sig") as infile:
+        for line_number, row in enumerate(csv.reader(infile), 1):
+            if not row or all(not value.strip() for value in row):
+                continue
+            if len(row) != 2:
+                raise ValueError(f"CSV line {line_number} must contain strain,count")
+            strain_text, count_text = (value.strip() for value in row)
+            if not batches and strain_text.casefold() == "strain" and count_text.casefold() == "count":
+                continue
+            strain = canonical.get(strain_text.casefold())
+            if strain is None:
+                raise ValueError(f"Unknown strain on CSV line {line_number}: {strain_text}")
+            try:
+                count = int(count_text)
+            except ValueError as exc:
+                raise ValueError(f"Invalid plant count on CSV line {line_number}: {count_text}") from exc
+            if count < 1:
+                raise ValueError(f"Plant count on CSV line {line_number} must be at least 1")
+            batches.append((strain, count))
+    if not batches:
+        raise ValueError("The CSV does not contain any strain,count rows")
+    return batches
 
 
 def add_strain_to_file(path: Path, strain: str, abbreviation: str) -> None:
