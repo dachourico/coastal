@@ -18,11 +18,11 @@ from room_layout import (
     add_strain_to_file,
     build_room_spec,
     load_custom_rooms,
-    parse_batch_csv,
     save_custom_rooms,
     resize_table,
     slot_id,
 )
+from inventory_import import parse_batch_file
 from strain_colors import strain_color, strain_css_class
 
 
@@ -81,6 +81,9 @@ class RoomLayoutPage(Gtk.Box):
         self.content.set_start_child(self._batch_panel())
         self.content.set_end_child(self._room_panel())
         self.append(self.content)
+        file_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        file_drop.connect("drop", self._drop_inventory)
+        self.add_controller(file_drop)
         self._reload_rooms(FLOWER_4.name)
         self._reload_strains()
         self._refresh()
@@ -142,10 +145,11 @@ class RoomLayoutPage(Gtk.Box):
         add.add_css_class("suggested-action")
         add.connect("clicked", self._add_batch)
         panel.append(add)
-        import_batches = Gtk.Button(label="Import batches from CSV…")
-        import_batches.set_tooltip_text("Import strain,count rows (Ctrl+I)")
+        import_batches = Gtk.Button(label="Import Excel or CSV…")
+        import_batches.set_tooltip_text("Import Excel inventory by strain or strain,count CSV rows (Ctrl+I)")
         import_batches.connect("clicked", self._import_batches)
         panel.append(import_batches)
+        panel.append(Gtk.Label(label="Or drop an Excel inventory or CSV here.\nExcel plants are grouped by strain.", xalign=0, wrap=True))
         new_strain = Gtk.Button(label="Add new strain…")
         new_strain.set_tooltip_text("Add a strain to the strain list (Ctrl+Shift+A)")
         new_strain.connect("clicked", self._add_strain_dialog)
@@ -700,7 +704,9 @@ class RoomLayoutPage(Gtk.Box):
         )
         file_filter = Gtk.FileFilter()
         file_filter.set_name(f"{suffix.upper()} files")
-        file_filter.add_pattern(f"*.{suffix}")
+        for extension in suffix.split(";"):
+            file_filter.add_pattern(f"*.{extension}")
+            file_filter.add_pattern(f"*.{extension.upper()}")
         chooser.add_filter(file_filter)
         if action == Gtk.FileChooserAction.SAVE:
             room_name = self.layout.room.name.replace(" ", "_")
@@ -715,27 +721,38 @@ class RoomLayoutPage(Gtk.Box):
         self._chooser(
             "Import plant batches",
             Gtk.FileChooserAction.OPEN,
-            "csv",
+            "xlsx;xls;csv",
             self._import_batches_chosen,
         )
 
+    def _import_inventory_path(self, path: Path) -> bool:
+        try:
+            batches = parse_batch_file(path, tuple(strain_abbreviations))
+            added = [self.layout.add_batch(strain, count) for strain, count in batches]
+            self.selected_batch_id = added[-1].id
+            self._refresh()
+            self.strain_entry.set_text("")
+            self._focus_strain_entry()
+            total = sum(batch.count for batch in added)
+            self.set_status(
+                f"Imported {len(added)} batches containing {total} plants into {self.layout.room.name}",
+                True,
+            )
+            return True
+        except Exception as exc:
+            self.set_status(f"Could not import batches: {exc}", False)
+            return False
+
+    def _drop_inventory(self, _target, value, _x, _y) -> bool:
+        files = value.get_files()
+        if len(files) != 1 or not files[0].get_path():
+            self.set_status("Drop one local Excel or CSV file at a time", False)
+            return False
+        return self._import_inventory_path(Path(files[0].get_path()))
+
     def _import_batches_chosen(self, chooser, response) -> None:
         if response == Gtk.ResponseType.ACCEPT and (selected := chooser.get_file()) and selected.get_path():
-            try:
-                batches = parse_batch_csv(Path(selected.get_path()), tuple(strain_abbreviations))
-                added = [self.layout.add_batch(strain, count) for strain, count in batches]
-                self.selected_batch_id = added[-1].id
-                self._refresh()
-                self.strain_entry.set_text("")
-                self._focus_strain_entry()
-                total = sum(batch.count for batch in added)
-                self.set_status(
-                    f"Imported {len(added)} batch{'es' if len(added) != 1 else ''} "
-                    f"containing {total} plants",
-                    True,
-                )
-            except Exception as exc:
-                self.set_status(f"Could not import batches: {exc}", False)
+            self._import_inventory_path(Path(selected.get_path()))
         chooser.destroy()
 
     def _save_chosen(self, chooser, response) -> None:

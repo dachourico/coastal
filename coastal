@@ -1,3 +1,7 @@
 #!/bin/sh
 app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec /usr/bin/python "$app_dir/coastal_app.py" "$@"
+python=/usr/bin/python
+if [ -x "$app_dir/.venv/bin/python" ]; then
+    python="$app_dir/.venv/bin/python"
+fi
+exec "$python" "$app_dir/coastal_app.py" "$@"

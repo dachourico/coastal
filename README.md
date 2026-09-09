@@ -21,10 +21,28 @@ Right-click any table in the planner to change its row count or exact plant
 capacity; if a table is made smaller, plants in removed positions return to their
 batches.
 
-The app requires Python 3, PyGObject, and GTK 4.
+In **Room Layouts**, use **Import Excel or CSV…** (Ctrl+I), or drop a file onto
+that tab. METRC Excel inventories (`.xlsx` or `.xls`) are counted by strain,
+creating one plant batch per strain in the selected room. Each row counts as one
+plant; if a `Count`, `Plant Count`, or `Number of Plants` column exists, its values
+are summed instead. The workbook must have one inventory sheet with a `Strain`
+or `Strain Name` header within its first 25 rows. Duplicate plant tags and invalid
+rows are rejected before any batches are added. New strain names are accepted
+from Excel without changing the saved strain catalog. Existing batches and
+placements are kept; importing the same file again adds another set of batches.
+CSV import still accepts the original `strain,count` format and known strains.
+
+The app requires Python 3, PyGObject, and GTK 4. Install Excel support once:
+
+```sh
+python -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+The `./coastal` launcher automatically uses this environment.
 
 Run the automated tests with:
 
 ```sh
-python -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests
 ```
