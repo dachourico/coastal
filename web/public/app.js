@@ -60,7 +60,19 @@ function render() {
     }$('#room-view').append(grid);
   }
 }
-for(const button of document.querySelectorAll('[data-tab]'))button.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==button.dataset.tab);};
+function showTab(name) {
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==name);
+}
+for(const button of document.querySelectorAll('[data-tab]'))button.onclick=()=>{
+  showTab(button.dataset.tab);
+  const url=new URL(location.href);
+  if(button.dataset.tab==='planner') url.searchParams.delete('tab');
+  else url.searchParams.set('tab',button.dataset.tab);
+  history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`);
+};
+const startTab=new URLSearchParams(location.search).get('tab');
+if(startTab==='clone'||startTab==='harvest') showTab(startTab);
 const today=new Date(); const localDate=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;document.querySelectorAll('input[type=date]').forEach(input=>input.value=localDate);
 $('#batch-form').onsubmit=e=>{e.preventDefault();run('add',{strain:$('#strain').value,count:Number($('#count').value)},'Batch added. Select a table to place it.');};
 $('#room').onchange=async()=>{const name=$('#room').value;if(state.batches.length&&!confirm('Start an empty layout in this room? Save your current layout first if you need it later.')){$('#room').value=state.room.name;return;}await run('room',{name});};

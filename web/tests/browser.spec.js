@@ -31,6 +31,7 @@ test('room design, resize, catalog and CSV import',async({page})=>{
  await page.locator('.table-top button').first().click();await page.locator('#resize-form [name=capacity]').fill('7');await page.locator('#resize-form button.primary').click();await expect(page.locator('.table').first().locator('.plant')).toHaveCount(7);await settled(page);
  await page.locator('#strain-open').click();await page.locator('#strain-form [name=name]').fill('Browser strain');await page.locator('#strain-form [name=abbreviation]').fill('BRS');await page.locator('#strain-form button.primary').click();await settled(page);await page.locator('#inventory-file').setInputFiles(file('batches.csv','strain,count\nBrowser strain,20\n'));await expect(page.locator('.batch')).toContainText('20 unplaced');await settled(page);
  await page.locator('.table').first().click();await settled(page);await expect(page.locator('.plant.occupied').first()).toHaveText('BRS');
+ await expect(page.getByRole('link', { name: 'Supply' })).toHaveAttribute('href', 'supply/');
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('Excel inventory import aggregates counts and preserves batches',async({page})=>{
