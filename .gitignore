@@ -5,3 +5,8 @@ harvest_master/csvs/
 build/
 dist/
 Coastal-Windows.zip
+node_modules/
+.wrangler/
+web/test-results/
+web/playwright-report/
+web/vendor/

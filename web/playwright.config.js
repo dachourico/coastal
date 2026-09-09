@@ -1,0 +1,2 @@
+import { defineConfig } from '@playwright/test';
+export default defineConfig({testDir:'./tests',timeout:180000,workers:1,use:{baseURL:process.env.COASTAL_URL||'http://127.0.0.1:8765',launchOptions:{executablePath:'/usr/bin/chromium',args:['--no-sandbox']},headless:true},webServer:process.env.COASTAL_URL?undefined:{command:'python3 -m http.server 8765 --bind 127.0.0.1 --directory dist',url:'http://127.0.0.1:8765',reuseExistingServer:true}});

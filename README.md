@@ -60,3 +60,42 @@ of the app folder. Save room layouts explicitly before exiting.
 The Windows workflow installs GTK and Python using MSYS2 UCRT64, runs the
 tests, builds with PyInstaller, and verifies the packaged window starts
 without MSYS2 on PATH. It can also be run manually from GitHub Actions.
+
+## Browser app (Cloudflare)
+
+Live app: https://coastalcultivation.coastal-web.workers.dev
+
+The `web/` app runs the existing Python CSV and room-planning logic in a browser
+worker using Pyodide. Cloudflare serves only static files. Inventories and layouts
+are processed on the device; no database, paid services, or server processing are
+used. The public link opens the tools without an account. Layouts, custom rooms,
+and added strains autosave in that browser. Coworkers share layouts using **Save
+layout** and **Open layout**; edits are not synchronized between devices.
+
+Includes clone and harvest CSV generation, Excel/CSV batch import, table placement
+(including drag and drop), auto-fill, suggested split, table resizing, room creation,
+JSON layout interchange with the desktop app, and plant assignment CSV export.
+The browser room designer starts with matching racks and allows individual table
+sizes to be edited. Existing custom desktop rooms can be transferred in saved
+layout JSON files. Local inventory data and desktop settings are never bundled.
+
+Setup and deployment:
+
+```sh
+cd web
+npm ci
+python3 scripts/vendor.py  # Download pinned Python runtime and Excel wheels once
+npm run build
+npm test                  # Uses /usr/bin/chromium; adjust config on other systems
+npx wrangler login
+npm run deploy
+```
+
+`npm run dev` starts a local preview. `wrangler.jsonc` deploys a static-assets-only
+Worker to the free `workers.dev` address. These commands do not change the account
+subscription or provision paid resources. Dependencies in `node_modules` are only
+build/deployment/test tools; the deployment contains only `web/dist`.
+
+The initial visit downloads the browser Python runtime. Use a current Chrome,
+Edge, Firefox, or Safari browser. Excel inputs are limited to 20 MB. Clearing site
+data removes browser autosave; download important layouts as backups.
