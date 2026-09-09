@@ -12,5 +12,6 @@ analysis = Analysis(
                         'icons': ['Adwaita'], 'themes': ['Adwaita']}},
 )
 pyz = PYZ(analysis.pure)
-exe = EXE(pyz, analysis.scripts, [], exclude_binaries=True, name='Coastal', console=False)
+exe = EXE(pyz, analysis.scripts, [], exclude_binaries=True, name='Coastal', console=False,
+          icon=str(root / 'assets/coastal-healing.ico'))
 collection = COLLECT(exe, analysis.binaries, analysis.datas, name='Coastal')
