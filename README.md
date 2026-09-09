@@ -46,3 +46,17 @@ Run the automated tests with:
 ```sh
 .venv/bin/python -m unittest discover -s tests
 ```
+
+## Windows app
+
+Share `Coastal-Windows.zip` from the **Build Windows app** GitHub Actions
+artifact. Extract the ZIP, open the Coastal folder, and double-click
+`Coastal.exe`. Python and GTK are bundled. Keep `_internal` beside the EXE.
+The package targets 64-bit Windows 10/11 and is unsigned.
+
+Packaged settings live in `%LOCALAPPDATA%\Coastal` and survive replacement
+of the app folder. Save room layouts explicitly before exiting.
+
+The Windows workflow installs GTK and Python using MSYS2 UCRT64, runs the
+tests, builds with PyInstaller, and verifies the packaged window starts
+without MSYS2 on PATH. It can also be run manually from GitHub Actions.

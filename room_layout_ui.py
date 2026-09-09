@@ -8,7 +8,8 @@ from pathlib import Path
 
 from gi.repository import Gdk, GLib, Gtk
 
-from clone_master.strains import strain_abbreviations
+from strain_catalog import STRAINS_FILE, strain_abbreviations
+from app_paths import settings_file
 from room_layout import (
     BUILTIN_ROOMS,
     FLOWER_4,
@@ -26,8 +27,7 @@ from inventory_import import parse_batch_file
 from strain_colors import strain_color, strain_css_class
 
 
-STRAINS_FILE = Path(__file__).parent / "clone_master" / "strains.py"
-CUSTOM_ROOMS_FILE = Path(__file__).parent / "custom_rooms.json"
+CUSTOM_ROOMS_FILE = settings_file("custom_rooms.json")
 
 
 class RoomLayoutPage(Gtk.Box):
@@ -1005,7 +1005,7 @@ class RoomLayoutPage(Gtk.Box):
                 add_strain_to_file(STRAINS_FILE, strain, short)
                 strain_abbreviations[strain] = short
                 self._reload_strains(strain)
-                self.set_status(f"Added {strain} ({short}) to clone_master/strains.py", True)
+                self.set_status(f"Added {strain} ({short}) to the strain catalog", True)
             except Exception as exc:
                 self.set_status(f"Could not add strain: {exc}", False)
                 return

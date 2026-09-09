@@ -1,0 +1,56 @@
+name: Build Windows app
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**.py'
+      - 'assets/**'
+      - 'requirements.txt'
+      - 'packaging/**'
+      - '.github/workflows/windows.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-gobject
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-pyinstaller
+      - name: Install Excel readers and test
+        run: |
+          python -m pip install -r requirements.txt
+          python -m unittest discover -s tests
+      - name: Package app
+        run: |
+          python -m PyInstaller --noconfirm packaging/coastal.spec
+          cp packaging/READ-ME-FIRST.txt dist/Coastal/
+          mkdir -p dist/Coastal/licenses
+          cp -r /ucrt64/share/licenses/* dist/Coastal/licenses/
+      - name: Test packaged app without MSYS2 on PATH
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+          $env:COASTAL_SMOKE_TEST = "$env:RUNNER_TEMP\coastal-smoke.txt"
+          $process = Start-Process -FilePath .\dist\Coastal\Coastal.exe -PassThru
+          if (-not $process.WaitForExit(60000)) { $process.Kill(); throw "App startup timed out" }
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $env:COASTAL_SMOKE_TEST)) { throw "App startup failed" }
+      - name: Create shareable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path dist/Coastal -DestinationPath Coastal-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Coastal-Windows
+          path: Coastal-Windows.zip
+          retention-days: 30

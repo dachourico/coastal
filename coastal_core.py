@@ -4,7 +4,7 @@ import csv
 from datetime import date
 from pathlib import Path
 
-from clone_master.strains import strain_abbreviations
+from strain_catalog import strain_abbreviations
 
 
 BATCH_TYPE = "clone"

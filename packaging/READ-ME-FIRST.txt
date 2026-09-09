@@ -1,0 +1,15 @@
+COASTAL FOR WINDOWS
+
+1. Right-click the ZIP and choose Extract All.
+2. Open the extracted Coastal folder.
+3. Double-click Coastal.exe.
+
+Keep the _internal folder beside Coastal.exe. No Python installation is needed.
+Requires 64-bit Windows 10 or Windows 11.
+
+Your custom rooms and strain catalog are saved in %LOCALAPPDATA%\Coastal.
+Use Save in Room Layouts to save plant placements before closing the app.
+Generated CSV files are saved next to the input CSV.
+
+This app is not code-signed, so Windows may show an unknown-publisher warning.
+Only open a copy received from someone you trust.

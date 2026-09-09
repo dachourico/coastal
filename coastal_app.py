@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """GTK 4 desktop interface for the Coastal Healing Workspace."""
 
-import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -9,7 +9,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from coastal_core import generate_clone_batches, generate_harvest
 from room_layout_ui import RoomLayoutPage
@@ -170,7 +170,10 @@ class CoastalWindow(Gtk.ApplicationWindow):
             self._set_status(f"Could not generate CSV: {exc}", False)
             return
         self._set_status(f"Created {output}", True)
-        subprocess.Popen(["xdg-open", str(output.parent)])
+        try:
+            Gio.AppInfo.launch_default_for_uri(output.parent.resolve().as_uri(), None)
+        except GLib.Error as exc:
+            self._set_status(f"Created {output}; could not open folder: {exc}", True)
 
     def _set_status(self, message: str, success: bool) -> None:
         self.status.set_text(message)
@@ -234,6 +237,12 @@ class CoastalApp(Gtk.Application):
             self._styles_installed = True
         window = self.props.active_window or CoastalWindow(self)
         window.present()
+        if marker := os.environ.get("COASTAL_SMOKE_TEST"):
+            def finish_smoke_test():
+                Path(marker).write_text("Window initialized successfully", encoding="utf-8")
+                self.quit()
+                return False
+            GLib.timeout_add(1500, finish_smoke_test)
 
 
 if __name__ == "__main__":

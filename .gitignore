@@ -2,3 +2,6 @@
 __pycache__
 clone_master/csvs/
 harvest_master/csvs/
+build/
+dist/
+Coastal-Windows.zip
