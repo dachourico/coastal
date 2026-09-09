@@ -14,8 +14,12 @@ The Room Layouts tab includes visual Flower 3 and Flower 4 planners. Add strain/
 batches, drag them onto individual tables, save reusable layouts as JSON, and
 export the finished plant-by-plant assignment to CSV for staff. New strains can
 also be added to `clone_master/strains.py` from the planner. Use **Design new
-room** to describe additional level, rack, and table configurations; these are
-saved in `custom_rooms.json` and become available in the room selector.
+room** to visually add levels, racks, and tables, choose each table's rows and
+total plant positions, and preview the same structure used by the planner. These
+rooms are saved in `custom_rooms.json` and become available in the room selector.
+Right-click any table in the planner to change its row count or exact plant
+capacity; if a table is made smaller, plants in removed positions return to their
+batches.
 
 The app requires Python 3, PyGObject, and GTK 4.
 

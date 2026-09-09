@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import itertools
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -15,14 +14,33 @@ class TableSpec:
     label: str
     rows: int
     plants_per_row: int
+    plant_count: int | None = None
+
+    @property
+    def capacity(self) -> int:
+        return self.plant_count if self.plant_count is not None else self.rows * self.plants_per_row
+
+    def positions_in_row(self, row: int) -> int:
+        """Spread an exact capacity across rows, putting the remainder first."""
+        if not 1 <= row <= self.rows:
+            return 0
+        quotient, remainder = divmod(self.capacity, self.rows)
+        return quotient + (1 if row <= remainder else 0)
 
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        value = asdict(self)
+        if self.plant_count is None:
+            value.pop("plant_count")
+        return value
 
     @classmethod
     def from_dict(cls, value: dict[str, object]) -> "TableSpec":
-        table = cls(str(value["label"]), int(value["rows"]), int(value["plants_per_row"]))
-        if not table.label.strip() or table.rows < 1 or table.plants_per_row < 1:
+        count = value.get("plant_count")
+        table = cls(
+            str(value["label"]), int(value["rows"]), int(value["plants_per_row"]),
+            int(count) if count is not None else None,
+        )
+        if not table.label.strip() or table.rows < 1 or table.plants_per_row < 1 or table.capacity < 1:
             raise ValueError("Room tables need a name, rows, and plants per row")
         return table
 
@@ -35,7 +53,7 @@ class RoomSpec:
     @property
     def capacity(self) -> int:
         return sum(
-            table.rows * table.plants_per_row
+            table.capacity
             for racks in self.levels.values()
             for tables in racks.values()
             for table in tables
@@ -53,7 +71,7 @@ class RoomSpec:
             for rack in sorted(self.levels[level]):
                 for table in self.levels[level][rack]:
                     for row in range(1, table.rows + 1):
-                        for position in range(1, table.plants_per_row + 1):
+                        for position in range(1, table.positions_in_row(row) + 1):
                             slots.append(slot_id(level, rack, table.label, row, position))
         return slots
 
@@ -65,9 +83,10 @@ class RoomSpec:
         for rack in sorted(self.levels[level]):
             for table in self.levels[level][rack]:
                 for row in range(1, table.rows + 1):
-                    positions = range(1, table.plants_per_row + 1)
+                    row_size = table.positions_in_row(row)
+                    positions = range(1, row_size + 1)
                     if row % 2 == 0:
-                        positions = range(table.plants_per_row, 0, -1)
+                        positions = range(row_size, 0, -1)
                     for position in positions:
                         slots.append(slot_id(level, rack, table.label, row, position))
         return slots
@@ -88,11 +107,11 @@ class RoomSpec:
         """Return a level's rack-sized groups, each in visual snake order."""
         if level not in self.levels:
             raise ValueError(f"{self.name} does not have level {level}")
-        ordered = self.level_slot_ids(level)
-        return [
-            [slot for slot in ordered if slot.startswith(f"L{level}|R{rack}|")]
-            for rack in sorted(self.levels[level])
-        ]
+        groups = {rack: [] for rack in sorted(self.levels[level])}
+        for slot in self.level_slot_ids(level):
+            rack = int(slot.split("|", 2)[1][1:])
+            groups[rack].append(slot)
+        return list(groups.values())
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -185,6 +204,29 @@ def slot_id(level: int, rack: int, table: str, row: int, position: int) -> str:
     return f"L{level}|R{rack}|{table}|row{row}|plant{position}"
 
 
+def resize_table(room: RoomSpec, level: int, rack: int, label: str, rows: int, capacity: int) -> RoomSpec:
+    """Return a room with one table resized while retaining its identity."""
+    if rows < 1 or capacity < 1:
+        raise ValueError("Rows and plant capacity must be at least 1")
+    if level not in room.levels or rack not in room.levels[level]:
+        raise ValueError("That table is not in this room")
+    found = False
+    levels = {level_id: {rack_id: list(tables) for rack_id, tables in racks.items()}
+              for level_id, racks in room.levels.items()}
+    for index, table in enumerate(levels[level][rack]):
+        if table.label == label:
+            columns = max(1, (capacity + rows - 1) // rows)
+            levels[level][rack][index] = TableSpec(label, rows, columns, capacity)
+            found = True
+            break
+    if not found:
+        raise ValueError("That table is not in this room")
+    return RoomSpec(room.name, {
+        level_id: {rack_id: tuple(tables) for rack_id, tables in racks.items()}
+        for level_id, racks in levels.items()
+    })
+
+
 def _rack_numbers(text: str) -> list[int]:
     racks = set()
     for part in text.split(","):
@@ -267,6 +309,7 @@ class RoomLayout:
         self.room = room
         self.batches: dict[int, PlantBatch] = {}
         self.assignments: dict[str, int] = {}
+        self._placed_counts: dict[int, int] = {}
         self._next_batch_id = 1
 
     @property
@@ -289,7 +332,7 @@ class RoomLayout:
         return batch
 
     def placed_count(self, batch_id: int) -> int:
-        return sum(value == batch_id for value in self.assignments.values())
+        return self._placed_counts.get(batch_id, 0)
 
     def remaining_count(self, batch_id: int) -> int:
         return self.batches[batch_id].count - self.placed_count(batch_id)
@@ -301,6 +344,7 @@ class RoomLayout:
         placed = min(len(available), self.remaining_count(batch_id))
         for slot in available[:placed]:
             self.assignments[slot] = batch_id
+        self._placed_counts[batch_id] = self.placed_count(batch_id) + placed
         return placed
 
     def place_on_table(self, batch_id: int, table_slots: list[str]) -> int:
@@ -308,42 +352,8 @@ class RoomLayout:
 
     def autofill_batches(self) -> int:
         """Fill whole rack-level groups without carrying a batch across levels."""
-        levels = sorted(self.room.levels)
-        cursor = 0
-        placed_total = 0
-
-        for batch_id in self.batches:
-            remaining = self.remaining_count(batch_id)
-            if remaining == 0:
-                continue
-
-            assigned_levels = {
-                int(slot.split("|", 1)[0][1:])
-                for slot, assigned_batch in self.assignments.items()
-                if assigned_batch == batch_id
-            }
-            if len(assigned_levels) > 1:
-                continue
-
-            if assigned_levels:
-                target_level = assigned_levels.pop()
-                candidates = [target_level]
-            else:
-                candidates = levels[cursor:]
-
-            for target_level in candidates:
-                empty_groups = [
-                    group for group in self.room.rack_slot_groups(target_level)
-                    if all(slot not in self.assignments for slot in group)
-                ]
-                chosen = _largest_whole_groups(empty_groups, remaining)
-                if chosen:
-                    cursor = max(cursor, levels.index(target_level))
-                    slots = [slot for group in chosen for slot in group]
-                    placed_total += self.place_across(batch_id, slots)
-                    break
-
-        return placed_total
+        targets = {batch_id: self.remaining_count(batch_id) for batch_id in self.batches}
+        return self._place_whole_rack_targets(targets)
 
     def suggested_split(self) -> int:
         """Fill whole rack groups proportionally without splitting batches across levels."""
@@ -356,45 +366,79 @@ class RoomLayout:
         )
         remaining = {batch_id: self.remaining_count(batch_id) for batch_id in self.batches}
         allocations = proportional_allocations(remaining, empty_capacity)
+        return self._place_whole_rack_targets(allocations)
+
+    def _place_whole_rack_targets(self, targets: dict[int, int]) -> int:
+        """Place target counts into whole racks while keeping each batch on one level."""
+        levels = sorted(self.room.levels)
+        level_indexes = {level: index for index, level in enumerate(levels)}
+        batch_levels: dict[int, set[int]] = {}
+        batch_racks: dict[tuple[int, int], set[int]] = {}
+        for slot, batch_id in self.assignments.items():
+            level_text, rack_text = slot.split("|", 2)[:2]
+            level = int(level_text[1:])
+            batch_levels.setdefault(batch_id, set()).add(level)
+            batch_racks.setdefault((batch_id, level), set()).add(int(rack_text[1:]))
+        available_groups = {
+            level: [
+                group
+                for group in self.room.rack_slot_groups(level)
+                if all(slot not in self.assignments for slot in group)
+            ]
+            for level in levels
+        }
         cursor = 0
         placed_total = 0
 
-        for batch_id, target in allocations.items():
-            if target == 0:
+        for batch_id, target in targets.items():
+            limit = min(target, self.remaining_count(batch_id))
+            if limit == 0:
                 continue
-            assigned_levels = {
-                int(slot.split("|", 1)[0][1:])
-                for slot, assigned_batch in self.assignments.items()
-                if assigned_batch == batch_id
-            }
+            assigned_levels = batch_levels.get(batch_id, set())
             if len(assigned_levels) > 1:
                 continue
-            candidates = [assigned_levels.pop()] if assigned_levels else levels[cursor:]
+            candidates = [next(iter(assigned_levels))] if assigned_levels else levels[cursor:]
             for target_level in candidates:
-                empty_groups = [
-                    group for group in self.room.rack_slot_groups(target_level)
-                    if all(slot not in self.assignments for slot in group)
-                ]
-                chosen = _largest_whole_groups(empty_groups, min(target, remaining[batch_id]))
+                chosen = _largest_whole_groups(
+                    available_groups[target_level],
+                    limit,
+                    adjacent_to=batch_racks.get((batch_id, target_level)),
+                )
                 if chosen:
-                    cursor = max(cursor, levels.index(target_level))
+                    cursor = max(cursor, level_indexes[target_level])
                     slots = [slot for group in chosen for slot in group]
                     placed_total += self.place_across(batch_id, slots)
+                    chosen_ids = {id(group) for group in chosen}
+                    available_groups[target_level] = [
+                        group
+                        for group in available_groups[target_level]
+                        if id(group) not in chosen_ids
+                    ]
                     break
         return placed_total
 
     def clear_slot(self, slot: str) -> None:
-        self.assignments.pop(slot, None)
+        batch_id = self.assignments.pop(slot, None)
+        if batch_id is not None:
+            self._placed_counts[batch_id] -= 1
 
     def remove_batch(self, batch_id: int) -> None:
         self.batches.pop(batch_id, None)
+        self._placed_counts.pop(batch_id, None)
         self.assignments = {
             slot: assigned for slot, assigned in self.assignments.items() if assigned != batch_id
         }
 
     def clear(self) -> None:
+        """Clear all plant placements while retaining the batch list."""
+        self.assignments.clear()
+        self._placed_counts.clear()
+
+    def clear_batches(self) -> None:
+        """Clear both the room layout and all plant batches."""
         self.batches.clear()
         self.assignments.clear()
+        self._placed_counts.clear()
         self._next_batch_id = 1
 
     def save(self, path: Path) -> Path:
@@ -430,6 +474,7 @@ class RoomLayout:
             if slot not in valid_slots or batch_id not in layout.batches:
                 raise ValueError("Saved layout contains an invalid plant position")
             layout.assignments[slot] = batch_id
+            layout._placed_counts[batch_id] = layout.placed_count(batch_id) + 1
         if any(layout.placed_count(batch.id) > batch.count for batch in layout.batches.values()):
             raise ValueError("Saved layout places more plants than a batch contains")
         layout._next_batch_id = max(layout.batches, default=0) + 1
@@ -451,17 +496,33 @@ class RoomLayout:
         return Path(path)
 
 
-def _largest_whole_groups(groups: list[list[str]], limit: int) -> list[list[str]]:
-    """Choose the earliest subset of whole groups that uses the most slots."""
-    best_indexes: tuple[int, ...] = ()
+def _largest_whole_groups(
+    groups: list[list[str]], limit: int, adjacent_to: set[int] | None = None,
+) -> list[list[str]]:
+    """Choose the largest consecutive run of rack groups within the limit."""
+    best: list[list[str]] = []
     best_size = 0
-    for count in range(1, len(groups) + 1):
-        for indexes in itertools.combinations(range(len(groups)), count):
-            size = sum(len(groups[index]) for index in indexes)
-            if size <= limit and size > best_size:
-                best_indexes = indexes
+    for start in range(len(groups)):
+        size = 0
+        chosen: list[list[str]] = []
+        previous_rack: int | None = None
+        for group in groups[start:]:
+            rack = int(group[0].split("|", 2)[1][1:])
+            if previous_rack is not None and rack != previous_rack + 1:
+                break
+            if size + len(group) > limit:
+                break
+            chosen.append(group)
+            size += len(group)
+            previous_rack = rack
+            occupied_racks = (adjacent_to or set()) | {
+                int(item[0].split("|", 2)[1][1:]) for item in chosen
+            }
+            is_contiguous = max(occupied_racks) - min(occupied_racks) + 1 == len(occupied_racks)
+            if is_contiguous and size > best_size:
+                best = chosen.copy()
                 best_size = size
-    return [groups[index] for index in best_indexes]
+    return best
 
 
 def proportional_allocations(counts: dict[int, int], capacity: int) -> dict[int, int]:
@@ -475,9 +536,10 @@ def proportional_allocations(counts: dict[int, int], capacity: int) -> dict[int,
         return {key: positive.get(key, 0) for key in counts}
 
     allocations = {key: (count * target) // total for key, count in positive.items()}
+    insertion_order = {key: index for index, key in enumerate(positive)}
     remainders = sorted(
         positive,
-        key=lambda key: (-(positive[key] * target % total), list(positive).index(key)),
+        key=lambda key: (-(positive[key] * target % total), insertion_order[key]),
     )
     for key in remainders[:target - sum(allocations.values())]:
         allocations[key] += 1

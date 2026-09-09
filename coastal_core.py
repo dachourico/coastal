@@ -16,11 +16,22 @@ UNITS = "Grams"
 
 
 def normalize_strain(raw_strain: str) -> str:
-    value = raw_strain.strip().casefold()
-    for strain in strain_abbreviations:
-        if value == strain.casefold():
-            return strain
-    raise ValueError(f"Unknown strain: {raw_strain.strip() or '(blank)'}")
+    value = raw_strain.strip()
+    try:
+        return _strain_index()[value.casefold()]
+    except KeyError:
+        raise ValueError(f"Unknown strain: {value or '(blank)'}") from None
+
+
+_STRAIN_INDEX: dict[str, str] = {}
+
+
+def _strain_index() -> dict[str, str]:
+    """Return an O(1) case-insensitive index, rebuilding after runtime additions."""
+    if len(_STRAIN_INDEX) != len(strain_abbreviations):
+        _STRAIN_INDEX.clear()
+        _STRAIN_INDEX.update((strain.casefold(), strain) for strain in strain_abbreviations)
+    return _STRAIN_INDEX
 
 
 def generate_clone_batches(

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from room_layout import (
     FLOWER_3,
+    FLOWER_4,
     RoomLayout,
     add_strain_to_file,
     build_room_spec,
@@ -14,6 +15,7 @@ from room_layout import (
     parse_batch_csv,
     proportional_allocations,
     save_custom_rooms,
+    resize_table,
     slot_ids,
     tables_for,
 )
@@ -127,6 +129,55 @@ class RoomLayoutTests(unittest.TestCase):
         }
         self.assertEqual(sorted(occupied_by_rack.values()), [0, 20, 20, 20])
 
+    def test_autofill_keeps_each_batch_in_consecutive_racks(self):
+        room = build_room_spec(
+            "Uneven racks",
+            "1 | 1 | Rack | 1 | 1 | 4\n"
+            "1 | 2 | Rack | 1 | 1 | 6\n"
+            "1 | 3 | Rack | 1 | 1 | 4\n",
+        )
+        layout = RoomLayout(room)
+        batch = layout.add_batch("Wedding Cake", 8)
+
+        self.assertEqual(layout.autofill_batches(), 6)
+        occupied_racks = {
+            int(slot.split("|", 2)[1][1:])
+            for slot, batch_id in layout.assignments.items()
+            if batch_id == batch.id
+        }
+        self.assertEqual(occupied_racks, {2})
+
+    def test_autofill_extends_a_batch_into_an_adjacent_rack(self):
+        room = build_room_spec("Three racks", "1 | 1-3 | Rack | 1 | 1 | 4")
+        layout = RoomLayout(room)
+        blocker = layout.add_batch("Apple Fritter", 4)
+        batch = layout.add_batch("Wedding Cake", 5)
+        groups = room.rack_slot_groups(1)
+        layout.place_across(blocker.id, groups[0])
+        layout.place_across(batch.id, [groups[2][0]])
+
+        self.assertEqual(layout.autofill_batches(), 4)
+        occupied_racks = {
+            int(slot.split("|", 2)[1][1:])
+            for slot, batch_id in layout.assignments.items()
+            if batch_id == batch.id
+        }
+        self.assertEqual(occupied_racks, {2, 3})
+
+    def test_clear_layout_keeps_batches_and_clear_batches_removes_them(self):
+        layout = RoomLayout()
+        batch = layout.add_batch("Wedding Cake", 3)
+        layout.place_across(batch.id, slot_ids()[:2])
+
+        layout.clear()
+        self.assertIn(batch.id, layout.batches)
+        self.assertEqual(layout.placed_count(batch.id), 0)
+        self.assertEqual(layout.remaining_count(batch.id), 3)
+
+        layout.clear_batches()
+        self.assertEqual(layout.batches, {})
+        self.assertEqual(layout.assignments, {})
+
     def test_suggested_split_uses_proportional_batch_representation(self):
         room = build_room_spec(
             "Split room",
@@ -166,6 +217,23 @@ class RoomLayoutTests(unittest.TestCase):
         self.assertEqual(layout.placed_total, 3)
         self.assertEqual(layout.capacity - layout.placed_total, 357)
 
+    def test_placement_count_index_stays_synchronized(self):
+        layout = RoomLayout(FLOWER_4)
+        batch = layout.add_batch("Blue Dream", 3)
+        slots = layout.room.slot_ids()[:3]
+        layout.place_across(batch.id, slots)
+        layout.clear_slot(slots[0])
+        self.assertEqual(layout.placed_count(batch.id), 2)
+
+        with tempfile.TemporaryDirectory() as directory:
+            saved = Path(directory) / "layout.json"
+            layout.save(saved)
+            loaded = RoomLayout.load(saved)
+            self.assertEqual(loaded.placed_count(batch.id), 2)
+            loaded.remove_batch(batch.id)
+            self.assertEqual(loaded.placed_count(batch.id), 0)
+            self.assertNotIn(batch.id, loaded.assignments.values())
+
     def test_save_load_and_export(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -197,6 +265,26 @@ class RoomLayoutTests(unittest.TestCase):
             layout_path = Path(directory) / "layout.json"
             RoomLayout(room).save(layout_path)
             self.assertEqual(RoomLayout.load(layout_path).room, room)
+
+    def test_table_can_have_an_exact_capacity_across_uneven_rows(self):
+        room = resize_table(FLOWER_4, 1, 1, "4x8 A", rows=3, capacity=10)
+        table = room.tables_for(1, 1)[0]
+        self.assertEqual(table.capacity, 10)
+        self.assertEqual([table.positions_in_row(row) for row in range(1, 4)], [4, 3, 3])
+        table_slots = [slot for slot in room.slot_ids() if "|R1|4x8 A|" in slot and slot.startswith("L1|")]
+        self.assertEqual(len(table_slots), 10)
+        self.assertIn("L1|R1|4x8 A|row3|plant3", table_slots)
+        self.assertNotIn("L1|R1|4x8 A|row3|plant4", table_slots)
+
+    def test_exact_table_capacity_survives_persistence(self):
+        room = resize_table(FLOWER_4, 1, 1, "4x8 A", rows=3, capacity=11)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rooms.json"
+            save_custom_rooms(path, {room.name: room})
+            loaded = load_custom_rooms(path)[room.name]
+        table = loaded.tables_for(1, 1)[0]
+        self.assertEqual(table.capacity, 11)
+        self.assertEqual([table.positions_in_row(row) for row in range(1, 4)], [4, 4, 3])
 
     def test_add_strain_preserves_valid_dictionary(self):
         with tempfile.TemporaryDirectory() as directory:

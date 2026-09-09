@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from datetime import date
 from pathlib import Path
 
@@ -13,11 +14,13 @@ from room_layout import (
     FLOWER_4,
     RoomLayout,
     RoomSpec,
+    TableSpec,
     add_strain_to_file,
     build_room_spec,
     load_custom_rooms,
     parse_batch_csv,
     save_custom_rooms,
+    resize_table,
     slot_id,
 )
 from strain_colors import strain_color, strain_css_class
@@ -38,19 +41,25 @@ class RoomLayoutPage(Gtk.Box):
             self.custom_rooms = {}
             set_status(f"Could not load custom rooms: {exc}", False)
         self.rooms = {**BUILTIN_ROOMS, **self.custom_rooms}
-        self.layouts = {FLOWER_4.name: RoomLayout(FLOWER_4)}
+        self.layouts = {FLOWER_4.name: RoomLayout(self.rooms[FLOWER_4.name])}
         self.layout = self.layouts[FLOWER_4.name]
         self.selected_batch_id: int | None = None
         self.painting = False
         self.slot_buttons: dict[str, Gtk.Button] = {}
         self.slot_color_classes: dict[str, str] = {}
         self.strain_color_provider = Gtk.CssProvider()
+        self._styled_strains: frozenset[str] = frozenset()
+        self._strain_names: tuple[str, ...] = ()
+        self._strain_keys: tuple[str, ...] = ()
+        self._strain_positions: dict[str, int] = {}
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
             self.strain_color_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
         )
         self.batch_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self._batch_controls: dict[int, tuple[Gtk.Button, Gtk.Label]] = {}
+        self._rendered_batch_layout: RoomLayout | None = None
         self.capacity_label = Gtk.Label(xalign=1)
         self.capacity_label.add_css_class("heading")
         self.room_combo = Gtk.ComboBoxText()
@@ -102,6 +111,7 @@ class RoomLayoutPage(Gtk.Box):
             ("Auto-fill", self._autofill, "Ctrl+Shift+F"),
             ("Suggested split", self._suggested_split, "Ctrl+Shift+P"),
             ("Clear", self._clear_layout, None),
+            ("Clear batches", self._clear_batches, None),
         ):
             button = Gtk.Button(label=label)
             if shortcut:
@@ -150,16 +160,6 @@ class RoomLayoutPage(Gtk.Box):
         )
         instruction.add_css_class("dim-label")
         panel.append(instruction)
-        shortcuts = Gtk.Label(
-            label="Shortcuts: Ctrl+Enter add batch · Ctrl+Shift+Enter place selected batch · "
-                  "Ctrl+Shift+F auto-fill · Ctrl+Shift+P suggested split · Ctrl+Shift+A new strain · "
-                  "Ctrl+I import batches · Ctrl+S save · Ctrl+O open · Ctrl+E export",
-            xalign=0,
-            wrap=True,
-        )
-        shortcuts.add_css_class("dim-label")
-        panel.append(shortcuts)
-
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_child(self.batch_list)
@@ -234,6 +234,8 @@ class RoomLayoutPage(Gtk.Box):
         level_title = Gtk.Label(label=f"Level {level}", xalign=0)
         level_title.add_css_class("heading")
         level_box.append(level_title)
+        level_slots = self.layout.room.level_slot_ids(level)
+        slot_positions = {slot: index for index, slot in enumerate(level_slots)}
         racks = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5, homogeneous=True)
         for rack in sorted(self.layout.room.levels[level]):
             rack_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
@@ -241,12 +243,33 @@ class RoomLayoutPage(Gtk.Box):
             title.add_css_class("caption")
             rack_box.append(title)
             for table in self.layout.room.tables_for(level, rack):
-                rack_box.append(self._table(level, rack, table.label, table.rows, table.plants_per_row))
+                rack_box.append(
+                    self._table(
+                        level,
+                        rack,
+                        table.label,
+                        table.rows,
+                        table.plants_per_row,
+                        [table.positions_in_row(row) for row in range(1, table.rows + 1)],
+                        level_slots,
+                        slot_positions,
+                    )
+                )
             racks.append(rack_box)
         level_box.append(racks)
         return level_box
 
-    def _table(self, level: int, rack: int, table: str, rows: int, columns: int) -> Gtk.Widget:
+    def _table(
+        self,
+        level: int,
+        rack: int,
+        table: str,
+        rows: int,
+        columns: int,
+        row_sizes: list[int],
+        level_slots: list[str],
+        slot_positions: dict[str, int],
+    ) -> Gtk.Widget:
         frame = Gtk.Frame()
         body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         body.set_margin_top(2)
@@ -256,22 +279,24 @@ class RoomLayoutPage(Gtk.Box):
 
         place = Gtk.Button(
             label=table.replace("4x8 ", ""),
-            tooltip_text=f"{table} — start selected batch here and fill across this level",
+            tooltip_text=f"{table} — click to place a batch; right-click to change rows or capacity",
         )
         place.add_css_class("flat")
         place.add_css_class("table-label")
-        table_slot_ids = [
-            slot_id(level, rack, table, row, position)
-            for row in range(1, rows + 1)
-            for position in range(1, columns + 1)
-        ]
-        placement_slots = self.layout.room.level_slots_from(level, table_slot_ids[0])
+        first_slot = slot_id(level, rack, table, 1, 1)
+        start = slot_positions[first_slot]
+        placement_slots = level_slots[start:] + level_slots[:start]
         place.connect("clicked", lambda _button, slots=placement_slots: self._place_selected(slots))
+        context_click = Gtk.GestureClick(button=3)
+        context_click.connect(
+            "pressed",
+            lambda _gesture, _count, _x, _y, l=level, r=rack, name=table: self._edit_table_dialog(l, r, name),
+        )
         body.append(place)
 
         grid = Gtk.Grid(row_spacing=1, column_spacing=1, column_homogeneous=True, hexpand=True)
         for row in range(1, rows + 1):
-            for position in range(1, columns + 1):
+            for position in range(1, row_sizes[row - 1] + 1):
                 key = slot_id(level, rack, table, row, position)
                 button = Gtk.Button(label="·", width_request=20, height_request=20)
                 button.set_tooltip_text(f"Row {row}, position {position} — empty")
@@ -287,14 +312,73 @@ class RoomLayoutPage(Gtk.Box):
                 grid.attach(button, position - 1, row - 1, 1, 1)
         body.append(grid)
         frame.set_child(body)
+        frame.add_controller(context_click)
 
         target = Gtk.DropTarget.new(str, Gdk.DragAction.COPY)
         target.connect("drop", lambda _target, value, _x, _y, slots=placement_slots: self._drop(value, slots))
         frame.add_controller(target)
         return frame
 
+    def _edit_table_dialog(self, level: int, rack: int, table_label: str) -> None:
+        table = next(table for table in self.layout.room.tables_for(level, rack) if table.label == table_label)
+        dialog = Gtk.Dialog(title=f"Edit {table_label}", transient_for=self.parent, modal=True)
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Apply", Gtk.ResponseType.ACCEPT)
+        content = dialog.get_content_area()
+        content.set_spacing(10)
+        content.set_margin_top(16)
+        content.set_margin_bottom(16)
+        content.set_margin_start(16)
+        content.set_margin_end(16)
+        content.append(Gtk.Label(
+            label=f"Level {level} · Rack {rack}\nSet the total plant positions and how many rows to display.",
+            xalign=0,
+        ))
+        capacity = Gtk.SpinButton.new_with_range(1, 500, 1)
+        capacity.set_value(table.capacity)
+        rows = Gtk.SpinButton.new_with_range(1, 50, 1)
+        rows.set_value(table.rows)
+        for label, control in (("Total plants", capacity), ("Rows", rows)):
+            line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            line.append(Gtk.Label(label=label, xalign=0, hexpand=True))
+            line.append(control)
+            content.append(line)
+        dialog.connect("response", self._edit_table_response, level, rack, table_label, rows, capacity)
+        dialog.present()
+
+    def _edit_table_response(self, dialog, response, level, rack, label, rows, capacity) -> None:
+        if response == Gtk.ResponseType.ACCEPT:
+            try:
+                rows.update()
+                capacity.update()
+                room = resize_table(
+                    self.layout.room, level, rack, label,
+                    rows.get_value_as_int(), capacity.get_value_as_int(),
+                )
+                valid_slots = set(room.slot_ids())
+                removed = [slot for slot in self.layout.assignments if slot not in valid_slots]
+                for slot in removed:
+                    self.layout.clear_slot(slot)
+                self.layout.room = room
+                self.rooms[room.name] = room
+                # Store overrides for built-in rooms too, so table sizing survives restarts.
+                self.custom_rooms[room.name] = room
+                save_custom_rooms(CUSTOM_ROOMS_FILE, self.custom_rooms)
+                self.slot_buttons.clear()
+                self.content.set_end_child(self._room_panel())
+                self._refresh()
+                suffix = f"; returned {len(removed)} placed plants to their batches" if removed else ""
+                self.set_status(f"Updated {label} to {capacity.get_value_as_int()} positions{suffix}", True)
+            except Exception as exc:
+                self.set_status(f"Could not resize table: {exc}", False)
+                return
+        dialog.destroy()
+
     def _reload_strains(self, selected: str | None = None) -> None:
         names = sorted(strain_abbreviations, key=str.casefold)
+        self._strain_names = tuple(names)
+        self._strain_keys = tuple(name.casefold() for name in names)
+        self._strain_positions = {name.casefold(): index for index, name in enumerate(names)}
         completion = Gtk.EntryCompletion()
         model = Gtk.ListStore(str)
         for name in names:
@@ -305,8 +389,9 @@ class RoomLayoutPage(Gtk.Box):
         completion.set_popup_completion(True)
         completion.set_popup_set_width(True)
         self.strain_entry.set_completion(completion)
-        if selected in names:
-            self.strain_entry.set_text(selected)
+        selected_position = self._strain_positions.get(selected.casefold()) if selected else None
+        if selected_position is not None:
+            self.strain_entry.set_text(self._strain_names[selected_position])
         else:
             self.strain_entry.set_text("")
 
@@ -318,10 +403,11 @@ class RoomLayoutPage(Gtk.Box):
     def _reload_rooms(self, selected: str) -> None:
         self.room_combo.remove_all()
         names = sorted(self.rooms, key=str.casefold)
+        positions = {name: index for index, name in enumerate(names)}
         for name in names:
             self.room_combo.append_text(name)
-        if selected in names:
-            self.room_combo.set_active(names.index(selected))
+        if selected in positions:
+            self.room_combo.set_active(positions[selected])
 
     def _room_changed(self, combo) -> None:
         name = combo.get_active_text()
@@ -338,10 +424,23 @@ class RoomLayoutPage(Gtk.Box):
     def _add_batch(self, _button) -> None:
         try:
             typed = self.strain_entry.get_text().strip()
-            exact = next((name for name in strain_abbreviations if name.casefold() == typed.casefold()), None)
-            matches = [name for name in strain_abbreviations if name.casefold().startswith(typed.casefold())]
-            strain = exact or (matches[0] if len(matches) == 1 else "")
-            if not strain and matches:
+            typed_key = typed.casefold()
+            position = bisect_left(self._strain_keys, typed_key)
+            exact = (
+                self._strain_names[position]
+                if position < len(self._strain_keys) and self._strain_keys[position] == typed_key
+                else None
+            )
+            prefix = (
+                position < len(self._strain_keys)
+                and self._strain_keys[position].startswith(typed_key)
+            )
+            another_prefix = (
+                position + 1 < len(self._strain_keys)
+                and self._strain_keys[position + 1].startswith(typed_key)
+            )
+            strain = exact or (self._strain_names[position] if prefix and not another_prefix else "")
+            if not strain and prefix:
                 raise ValueError("Keep typing or choose a strain from the suggestions")
             self.count.update()
             batch = self.layout.add_batch(strain, self.count.get_value_as_int())
@@ -355,9 +454,8 @@ class RoomLayoutPage(Gtk.Box):
         self._refresh()
         self.set_status(f"Added batch {batch.id}: {batch.count} {batch.strain}", True)
 
-    def _batch_row(self, batch_id: int) -> Gtk.Widget:
+    def _batch_row(self, batch_id: int) -> tuple[Gtk.Widget, Gtk.Button, Gtk.Label]:
         batch = self.layout.batches[batch_id]
-        placed = self.layout.placed_count(batch_id)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         row.add_css_class("card")
         row.set_margin_top(2)
@@ -373,13 +471,10 @@ class RoomLayoutPage(Gtk.Box):
             tooltip_text="Select this batch; Ctrl+Shift+Enter places it in the next open positions",
         )
         select_label = Gtk.Label(
-            label=f"#{batch.id}  {batch.strain}\n{placed}/{batch.count}",
             xalign=0,
             wrap=True,
         )
         select.set_child(select_label)
-        if batch_id == self.selected_batch_id:
-            select.add_css_class("suggested-action")
         select.connect("clicked", lambda _button, value=batch_id: self._select_batch(value))
         drag = Gtk.DragSource(actions=Gdk.DragAction.COPY)
         drag.connect(
@@ -391,17 +486,36 @@ class RoomLayoutPage(Gtk.Box):
         remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Remove batch and its placements")
         remove.connect("clicked", lambda _button, value=batch_id: self._remove_batch(value))
         row.append(remove)
-        return row
+        return row, select, select_label
+
+    def _refresh_batch_rows(self) -> None:
+        batch_ids = tuple(self.layout.batches)
+        if self._rendered_batch_layout is not self.layout or tuple(self._batch_controls) != batch_ids:
+            while child := self.batch_list.get_first_child():
+                self.batch_list.remove(child)
+            self._batch_controls.clear()
+            for batch_id in batch_ids:
+                row, select, label = self._batch_row(batch_id)
+                self._batch_controls[batch_id] = (select, label)
+                self.batch_list.append(row)
+            self._rendered_batch_layout = self.layout
+
+        for batch_id, (select, label) in self._batch_controls.items():
+            batch = self.layout.batches[batch_id]
+            label.set_text(
+                f"#{batch.id}  {batch.strain}\n{self.layout.placed_count(batch_id)}/{batch.count}"
+            )
+            if batch_id == self.selected_batch_id:
+                select.add_css_class("suggested-action")
+            else:
+                select.remove_css_class("suggested-action")
 
     def _refresh(self) -> None:
         self._refresh_strain_colors()
         placed = self.layout.placed_total
         remaining = self.layout.capacity - placed
         self.capacity_label.set_text(f"{placed}/{self.layout.capacity} ({remaining} remaining)")
-        while child := self.batch_list.get_first_child():
-            self.batch_list.remove(child)
-        for batch_id in self.layout.batches:
-            self.batch_list.append(self._batch_row(batch_id))
+        self._refresh_batch_rows()
 
         for slot, button in self.slot_buttons.items():
             if old_class := self.slot_color_classes.pop(slot, None):
@@ -424,6 +538,9 @@ class RoomLayoutPage(Gtk.Box):
     def _refresh_strain_colors(self) -> None:
         strains = set(strain_abbreviations)
         strains.update(batch.strain for layout in self.layouts.values() for batch in layout.batches.values())
+        strain_set = frozenset(strains)
+        if strain_set == self._styled_strains:
+            return
         rules = []
         for strain in sorted(strains, key=str.casefold):
             css_class = strain_css_class(strain)
@@ -434,6 +551,7 @@ class RoomLayoutPage(Gtk.Box):
                 f"label.strain-swatch.{css_class} {{ color: {background}; font-size: 18px; }}"
             )
         self.strain_color_provider.load_from_string("\n".join(rules))
+        self._styled_strains = strain_set
 
     def _select_batch(self, batch_id: int) -> None:
         self.selected_batch_id = batch_id
@@ -517,12 +635,6 @@ class RoomLayoutPage(Gtk.Box):
         else:
             self.set_status("This level is full, or the selected batch is completely placed", False)
 
-    def _clear_slot(self, slot: str) -> None:
-        if slot in self.layout.assignments:
-            self.layout.clear_slot(slot)
-            self._refresh()
-            self.set_status("Plant returned to its batch", True)
-
     def _remove_batch(self, batch_id: int) -> None:
         self.painting = False
         self.layout.remove_batch(batch_id)
@@ -534,9 +646,15 @@ class RoomLayoutPage(Gtk.Box):
     def _clear_layout(self, _button) -> None:
         self.painting = False
         self.layout.clear()
+        self._refresh()
+        self.set_status("Room layout cleared; plant batches were kept", True)
+
+    def _clear_batches(self, _button) -> None:
+        self.painting = False
+        self.layout.clear_batches()
         self.selected_batch_id = None
         self._refresh()
-        self.set_status("Layout cleared", True)
+        self.set_status("Plant batches and room layout cleared", True)
 
     def _autofill(self, _button) -> None:
         placed = self.layout.autofill_batches()
@@ -651,7 +769,7 @@ class RoomLayoutPage(Gtk.Box):
 
     def _new_room_dialog(self, _button) -> None:
         dialog = Gtk.Dialog(title="Design a new room", transient_for=self.parent, modal=True)
-        dialog.set_default_size(680, 480)
+        dialog.set_default_size(900, 620)
         dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dialog.add_button("Create room", Gtk.ResponseType.ACCEPT)
         content = dialog.get_content_area()
@@ -661,34 +779,161 @@ class RoomLayoutPage(Gtk.Box):
         content.set_margin_start(16)
         content.set_margin_end(16)
 
+        title = Gtk.Label(label="Build the room as it appears in the planner", xalign=0)
+        title.add_css_class("heading")
+        content.append(title)
         name = Gtk.Entry(placeholder_text="Room name (for example Flower 2)")
         content.append(name)
         help_text = Gtk.Label(
-            label="Add one line per table configuration:\n"
-                  "Level | Racks | Table size | Number of tables | Rows per table | Plants per row\n\n"
-                  "Rack groups can be written as 1-3,6. Different rack layouts use separate lines.",
+            label="Add levels, racks, and tables below. Each table shows its name, number of rows, "
+                  "and total plant positions. Plant positions are distributed evenly across its rows.",
             xalign=0,
             wrap=True,
         )
         help_text.add_css_class("dim-label")
         content.append(help_text)
-        editor = Gtk.TextView(monospace=True, vexpand=True)
-        editor.get_buffer().set_text(
-            "1 | 1-6 | 4x8 | 2 | 2 | 5\n"
-            "2 | 1-6 | 4x8 | 2 | 2 | 4"
-        )
+        levels_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         scroller = Gtk.ScrolledWindow(vexpand=True)
-        scroller.set_child(editor)
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(levels_box)
         content.append(scroller)
-        dialog.connect("response", self._new_room_response, name, editor)
+
+        levels: list[dict] = []
+
+        def add_table(rack_state, table_name="4x8", rows_value=2, capacity_value=10):
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            card.add_css_class("card")
+            card.set_margin_top(3)
+            card.set_margin_bottom(3)
+            card.set_margin_start(3)
+            card.set_margin_end(3)
+            heading = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+            label = Gtk.Entry(text=table_name, hexpand=True, placeholder_text="Table name")
+            heading.append(label)
+            remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Remove table")
+            heading.append(remove)
+            card.append(heading)
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            rows = Gtk.SpinButton.new_with_range(1, 50, 1)
+            rows.set_value(rows_value)
+            capacity = Gtk.SpinButton.new_with_range(1, 500, 1)
+            capacity.set_value(capacity_value)
+            row.append(Gtk.Label(label="Rows"))
+            row.append(rows)
+            row.append(Gtk.Label(label="Total plants"))
+            row.append(capacity)
+            card.append(row)
+            state = {"card": card, "label": label, "rows": rows, "capacity": capacity}
+            rack_state["tables"].append(state)
+            rack_state["tables_box"].append(card)
+            remove.connect("clicked", lambda _b: (
+                rack_state["tables"].remove(state), rack_state["tables_box"].remove(card)
+            ))
+
+        def add_rack(level_state):
+            rack_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            rack_card.add_css_class("frosted-panel")
+            rack_card.set_size_request(240, -1)
+            header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+            rack_title = Gtk.Label(hexpand=True, xalign=0)
+            header.append(rack_title)
+            remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Remove rack")
+            header.append(remove)
+            rack_card.append(header)
+            tables_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            rack_card.append(tables_box)
+            add = Gtk.Button(label="+ Add table")
+            rack_card.append(add)
+            rack_state = {"card": rack_card, "title": rack_title, "tables_box": tables_box, "tables": []}
+            level_state["racks"].append(rack_state)
+            level_state["racks_box"].append(rack_card)
+
+            def renumber():
+                for index, item in enumerate(level_state["racks"], 1):
+                    item["title"].set_text(f"Rack {index}")
+
+            def remove_rack(_button):
+                level_state["racks"].remove(rack_state)
+                level_state["racks_box"].remove(rack_card)
+                renumber()
+
+            remove.connect("clicked", remove_rack)
+            add.connect("clicked", lambda _b: add_table(rack_state, f"4x8 {chr(65 + len(rack_state['tables']))}"))
+            add_table(rack_state, "4x8 A")
+            renumber()
+
+        def add_level(_button=None):
+            level_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            level_card.add_css_class("card")
+            header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            level_title = Gtk.Label(hexpand=True, xalign=0)
+            level_title.add_css_class("heading")
+            header.append(level_title)
+            add = Gtk.Button(label="+ Add rack")
+            header.append(add)
+            remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Remove level")
+            header.append(remove)
+            level_card.append(header)
+            racks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            level_card.append(racks_box)
+            state = {"card": level_card, "title": level_title, "racks_box": racks_box, "racks": []}
+            levels.append(state)
+            levels_box.append(level_card)
+
+            def renumber_levels():
+                for index, item in enumerate(levels, 1):
+                    item["title"].set_text(f"Level {index}")
+
+            def remove_level(_button):
+                levels.remove(state)
+                levels_box.remove(level_card)
+                renumber_levels()
+
+            add.connect("clicked", lambda _b: add_rack(state))
+            remove.connect("clicked", remove_level)
+            add_rack(state)
+            renumber_levels()
+
+        add_level_button = Gtk.Button(label="+ Add level")
+        add_level_button.connect("clicked", add_level)
+        content.append(add_level_button)
+        add_level()
+        dialog.connect("response", self._new_room_response, name, levels)
         dialog.present()
 
-    def _new_room_response(self, dialog, response, name_entry, editor) -> None:
+    def _new_room_response(self, dialog, response, name_entry, levels) -> None:
         if response == Gtk.ResponseType.ACCEPT:
-            buffer = editor.get_buffer()
-            start, end = buffer.get_bounds()
             try:
-                room = build_room_spec(name_entry.get_text(), buffer.get_text(start, end, True))
+                room_name = name_entry.get_text().strip()
+                if not room_name:
+                    raise ValueError("Room name is required")
+                if not levels:
+                    raise ValueError("Add at least one level")
+                room_levels = {}
+                for level_number, level in enumerate(levels, 1):
+                    if not level["racks"]:
+                        raise ValueError(f"Level {level_number} needs at least one rack")
+                    room_levels[level_number] = {}
+                    for rack_number, rack in enumerate(level["racks"], 1):
+                        if not rack["tables"]:
+                            raise ValueError(f"Level {level_number}, rack {rack_number} needs a table")
+                        tables = []
+                        used_labels = set()
+                        for table in rack["tables"]:
+                            label = table["label"].get_text().strip()
+                            table["rows"].update()
+                            table["capacity"].update()
+                            if not label:
+                                raise ValueError("Every table needs a name")
+                            if label.casefold() in used_labels:
+                                raise ValueError(f"Table names must be unique within rack {rack_number}")
+                            used_labels.add(label.casefold())
+                            rows = table["rows"].get_value_as_int()
+                            capacity = table["capacity"].get_value_as_int()
+                            columns = max(1, (capacity + rows - 1) // rows)
+                            tables.append(TableSpec(label, rows, columns, capacity))
+                        room_levels[level_number][rack_number] = tuple(tables)
+                room = RoomSpec(room_name, room_levels)
                 if any(room.name.casefold() == name.casefold() for name in self.rooms):
                     raise ValueError(f"A room named {room.name} already exists")
                 self.custom_rooms[room.name] = room

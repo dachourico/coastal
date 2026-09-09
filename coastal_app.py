@@ -181,10 +181,12 @@ class CoastalWindow(Gtk.ApplicationWindow):
 class CoastalApp(Gtk.Application):
     def __init__(self):
         super().__init__(application_id="com.dachourico.Coastal", flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self._styles_installed = False
 
     def do_activate(self):
-        css = Gtk.CssProvider()
-        css.load_from_string("""
+        if not self._styles_installed:
+            css = Gtk.CssProvider()
+            css.load_from_string("""
             .plant-slot { padding: 0; min-width: 20px; min-height: 20px; font-size: 8px; }
             .plant-slot.occupied { font-weight: bold; }
             .table-label { padding: 0 2px; min-width: 24px; min-height: 20px; font-size: 9px; }
@@ -225,10 +227,11 @@ class CoastalApp(Gtk.Application):
                 background-color: rgba(221, 244, 232, 0.58);
                 border-radius: 10px;
             }
-        """)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+            """)
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+            self._styles_installed = True
         window = self.props.active_window or CoastalWindow(self)
         window.present()
 

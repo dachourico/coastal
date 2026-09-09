@@ -1,2 +1,3 @@
 #!/bin/sh
-exec /usr/bin/python /home/alexdacosta96/Work/coastal/coastal_app.py "$@"
+app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec /usr/bin/python "$app_dir/coastal_app.py" "$@"

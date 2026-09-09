@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import colorsys
 import hashlib
+from functools import lru_cache
 
 
+@lru_cache(maxsize=None)
 def strain_color(strain: str) -> tuple[str, str]:
     """Return deterministic background and readable foreground hex colors."""
     digest = hashlib.blake2s(strain.strip().casefold().encode("utf-8"), digest_size=8).digest()
@@ -27,6 +29,7 @@ def strain_color(strain: str) -> tuple[str, str]:
     return background, foreground
 
 
+@lru_cache(maxsize=None)
 def strain_css_class(strain: str) -> str:
     """Return a CSS-safe, stable class name for a strain."""
     key = hashlib.blake2s(strain.strip().casefold().encode("utf-8"), digest_size=6).hexdigest()

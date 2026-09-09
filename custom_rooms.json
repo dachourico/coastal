@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "rooms": [
+    {
+      "name": "Flower 4",
+      "levels": {
+        "1": {
+          "1": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "2": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "3": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "4": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2,
+              "plant_count": 4
+            }
+          ],
+          "5": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            }
+          ],
+          "6": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 5
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 5
+            }
+          ]
+        },
+        "2": {
+          "1": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "2": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "3": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "4": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "5": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            }
+          ],
+          "6": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            }
+          ]
+        },
+        "3": {
+          "1": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "2": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "3": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "4": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x4",
+              "rows": 2,
+              "plants_per_row": 2
+            }
+          ],
+          "5": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            }
+          ],
+          "6": [
+            {
+              "label": "4x8 A",
+              "rows": 2,
+              "plants_per_row": 4
+            },
+            {
+              "label": "4x8 B",
+              "rows": 2,
+              "plants_per_row": 4
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
