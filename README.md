@@ -68,8 +68,8 @@ Live app: https://coastalcultivation.coastal-web.workers.dev
 The `web/` app runs the existing Python CSV and room-planning logic in a browser
 worker using Pyodide. Cloudflare serves only static files. Inventories and layouts
 are processed on the device; no database, paid services, or server processing are
-used. The public link opens the tools without an account. Layouts, custom rooms,
-and added strains autosave in that browser. Coworkers share layouts using **Save
+used. The public link opens the tools without an account. Each visit starts with no batches or placements. Custom rooms
+and added strains are saved in that browser. Coworkers share layouts using **Save
 layout** and **Open layout**; edits are not synchronized between devices.
 
 Includes clone and harvest CSV generation, Excel/CSV batch import, table placement
@@ -98,4 +98,7 @@ build/deployment/test tools; the deployment contains only `web/dist`.
 
 The initial visit downloads the browser Python runtime. Use a current Chrome,
 Edge, Firefox, or Safari browser. Excel inputs are limited to 20 MB. Clearing site
-data removes browser autosave; download important layouts as backups.
+data removes saved room designs and strains. Download layouts to keep your work.
+
+**Clear placements** returns plants to their batches. **Clear all** removes all
+batches and placements while keeping the current room design.

@@ -68,6 +68,8 @@ def dispatch(raw):
             layout.autofill_batches()
         elif action == 'split':
             layout.suggested_split()
+        elif action == 'clear_all':
+            layout = RoomLayout(layout.room)
         elif action == 'clear':
             layout.clear()
         elif action == 'design':

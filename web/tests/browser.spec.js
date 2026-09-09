@@ -3,14 +3,20 @@ import { readFile } from 'node:fs/promises';
 const file=(name,text)=>({name,mimeType:'text/csv',buffer:Buffer.from(text)});
 async function ready(page){page.on('pageerror',e=>console.log('PAGE ERROR',e.message));page.on('requestfailed',r=>console.log('REQUEST FAILED',r.url(),r.failure()));await page.goto('/');await expect(page.locator('#status')).toHaveText('Ready.',{timeout:150000});await expect(page.locator('#application')).not.toHaveAttribute('disabled','');}
 async function settled(page){await expect(page.locator('#application')).not.toHaveAttribute('disabled','');await expect(page.locator('#status')).not.toHaveClass('error');}
-test('planner placement, autosave, JSON roundtrip, and CSV export',async({page})=>{
+test('planner placement, fresh startup, both clear actions, JSON roundtrip, and CSV export',async({page})=>{
  await ready(page);await expect(page.locator('header strong')).toHaveText('Coastal Healing');await page.locator('#strain').fill('Test strain');await page.locator('#count').fill('12');await page.locator('#batch-form button').click();await expect(page.locator('.batch')).toContainText('12 unplaced');await page.locator('.table').first().click();await expect(page.locator('#summary')).toContainText('10 /');await settled(page);
  await expect(page.locator('.plant.occupied').first()).toHaveText('TEST');
  const savedEvent=page.waitForEvent('download');await page.locator('#save').click();const saved=await savedEvent;const data=await readFile(await saved.path(),'utf8');expect(JSON.parse(data).batches[0].strain).toBe('Test strain');await settled(page);
- await page.reload();await expect(page.locator('#application')).not.toHaveAttribute('disabled','',{timeout:150000});await expect(page.locator('#summary')).toContainText('10 /');
+ await page.evaluate(content=>localStorage.setItem('coastal-layout',content),data);
+ await page.reload();await expect(page.locator('#application')).not.toHaveAttribute('disabled','',{timeout:150000});await expect(page.locator('#summary')).toContainText('0 /');await expect(page.locator('.batch')).toHaveCount(0);
+ await page.locator('#layout-file').setInputFiles(file('layout.json',data));await expect(page.locator('#summary')).toContainText('10 /');await settled(page);
  const csvEvent=page.waitForEvent('download');await page.locator('#export').click();const csv=await csvEvent;expect(await readFile(await csv.path(),'utf8')).toContain('Test strain');await settled(page);
- page.once('dialog',d=>d.accept());await page.locator('#clear').click();await expect(page.locator('#summary')).toContainText('0 /');await settled(page);
+ page.once('dialog',d=>d.accept());await page.locator('#clear').click();await expect(page.locator('#summary')).toContainText('0 /');await expect(page.locator('.batch')).toContainText('12 unplaced');await settled(page);
  page.once('dialog',d=>d.accept());await page.locator('#layout-file').setInputFiles(file('layout.json',data));await expect(page.locator('#summary')).toContainText('10 /');await settled(page);
+ await page.locator('#strain').fill('Second strain');await page.locator('#batch-form button').click();await expect(page.locator('.batch')).toHaveCount(2);await settled(page);
+ const room=await page.locator('#room').inputValue();const capacity=await page.locator('.plant').count();
+ page.once('dialog',d=>d.dismiss());await page.locator('#clear-all').click();await expect(page.locator('.batch')).toHaveCount(2);
+ page.once('dialog',d=>d.accept());await page.locator('#clear-all').click();await settled(page);await expect(page.locator('.batch')).toHaveCount(0);await expect(page.locator('.plant.occupied')).toHaveCount(0);await expect(page.locator('#room')).toHaveValue(room);await expect(page.locator('.plant')).toHaveCount(capacity);
  await page.screenshot({path:'test-results/planner.png',fullPage:true});
 });
 test('clone and harvest downloads plus invalid input',async({page})=>{
