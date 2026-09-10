@@ -11,6 +11,12 @@ from strain_catalog import strain_abbreviations
 
 layout = RoomLayout()
 rooms = dict(BUILTIN_ROOMS)
+MAX_REQUEST_BYTES = 25 * 1024 * 1024
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
+MAX_LAYOUT_BYTES = 2 * 1024 * 1024
+VALID_ACTIONS = {'state', 'generate', 'restore', 'room', 'add', 'import', 'place',
+                 'clear_slot', 'remove', 'autofill', 'split', 'clear_all', 'clear',
+                 'design', 'resize', 'strain', 'save', 'export'}
 
 def state():
     return dict(room=layout.room.to_dict(), rooms=[r.to_dict() for r in rooms.values()],
@@ -20,9 +26,13 @@ def state():
                 placed=layout.placed_total, strains=strain_abbreviations)
 
 def dispatch(raw):
+    if not isinstance(raw, str) or len(raw.encode('utf-8')) > MAX_REQUEST_BYTES:
+        raise ValueError('Request is too large')
     global layout
     request = json.loads(raw)
     action = request['action']
+    if action not in VALID_ACTIONS:
+        raise ValueError('Unknown action')
     with tempfile.TemporaryDirectory() as directory:
         directory = Path(directory)
         if action == 'generate':
@@ -40,6 +50,8 @@ def dispatch(raw):
                 output = generate_harvest(name, source, day)
             return json.dumps(dict(filename=output.name, content=output.read_text()))
         if action == 'restore':
+            if len(request.get('content', '').encode('utf-8')) > MAX_LAYOUT_BYTES:
+                raise ValueError('Layout file is too large')
             path = directory / 'layout.json'
             path.write_text(request['content'])
             restored = RoomLayout.load(path)
@@ -50,6 +62,8 @@ def dispatch(raw):
         elif action == 'add':
             layout.add_batch(request['strain'], int(request['count']))
         elif action == 'import':
+            if len(request.get('bytes', [])) > MAX_IMPORT_BYTES:
+                raise ValueError('Inventory file is too large (20 MB maximum)')
             suffix = Path(request['filename']).suffix.lower()
             path = directory / ('inventory' + suffix)
             path.write_bytes(bytes(request['bytes']))

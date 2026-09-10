@@ -16,6 +16,9 @@ let excelLoaded = false;
 self.onmessage = ({data: {id, request}}) => {
   queue = queue.then(async () => {
     try {
+      if (request.action === 'import' && request.bytes?.length > 20 * 1024 * 1024) {
+        throw new Error('Inventory file is too large (20 MB maximum)');
+      }
       const py = await ready;
       if (request.action === 'import' && /\.xlsx?$/i.test(request.filename) && !excelLoaded) {
         const response = await fetch('runtime/excel-wheels.json');

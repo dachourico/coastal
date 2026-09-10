@@ -113,6 +113,7 @@ export function renderApp(state: AppState, view: View): string {
           <a href="../?tab=clone">Clone batches</a>
           <a href="../?tab=harvest">Harvest</a>
           <a href="./" class="active">Supply</a>
+          <a href="../calendar/">Calendar</a>
         </nav>
         <nav class="tabs">
           <button type="button" data-action="tab" data-tab="stock" class="${view.tab === "stock" ? "active" : ""}">On hand</button>
@@ -190,9 +191,9 @@ function renderCard(status: ItemStatus): string {
   const { item } = status;
   const quick =
     item.packKind === "drum"
-      ? `<button type="button" data-action="swap" data-id="${item.id}">Swap drum</button>
-         <button type="button" data-action="remaining" data-id="${item.id}">Estimate left</button>`
-      : `<button type="button" data-action="consume" data-id="${item.id}">${item.useFromRooms ? logActionLabel(item) : `Used ${escapeHtml(countLabelOf(item))}`}</button>`;
+      ? `<button type="button" data-action="swap" data-id="${escapeHtml(item.id)}">Swap drum</button>
+         <button type="button" data-action="remaining" data-id="${escapeHtml(item.id)}">Estimate left</button>`
+      : `<button type="button" data-action="consume" data-id="${escapeHtml(item.id)}">${item.useFromRooms ? logActionLabel(item) : `Used ${escapeHtml(countLabelOf(item))}`}</button>`;
 
   return `
     <article class="item-card ${status.alert}">
@@ -213,7 +214,7 @@ function renderCard(status: ItemStatus): string {
       }</small>
       <div class="actions">
         ${quick}
-        <button type="button" data-action="detail" data-id="${item.id}">History</button>
+        <button type="button" data-action="detail" data-id="${escapeHtml(item.id)}">History</button>
       </div>
     </article>
   `;
@@ -337,9 +338,9 @@ function renderPastOrder(state: AppState, order: Order): string {
   const count = order.lines.reduce((sum, line) => sum + line.packs, 0);
   const actions =
     order.status === "draft"
-      ? `<button type="button" data-action="place-order" data-id="${order.id}">Mark placed</button>`
+      ? `<button type="button" data-action="place-order" data-id="${escapeHtml(order.id)}">Mark placed</button>`
       : order.status === "placed"
-        ? `<button type="button" class="primary" data-action="receive-order" data-id="${order.id}">Mark received</button>`
+        ? `<button type="button" class="primary" data-action="receive-order" data-id="${escapeHtml(order.id)}">Mark received</button>`
         : "";
   return `
     <div class="catalog-row" style="margin-top:10px">
@@ -391,9 +392,9 @@ function renderCatalog(state: AppState): string {
                   }${item.vendor ? ` · ${escapeHtml(item.vendor)}` : ""}</small>
             </div>
             <div class="actions">
-              <button type="button" data-action="edit-item" data-id="${item.id}">Edit</button>
-              <button type="button" data-action="duplicate-item" data-id="${item.id}">Duplicate</button>
-              <button type="button" data-action="archive-item" data-id="${item.id}">${item.archived ? "Restore" : "Archive"}</button>
+              <button type="button" data-action="edit-item" data-id="${escapeHtml(item.id)}">Edit</button>
+              <button type="button" data-action="duplicate-item" data-id="${escapeHtml(item.id)}">Duplicate</button>
+              <button type="button" data-action="archive-item" data-id="${escapeHtml(item.id)}">${item.archived ? "Restore" : "Archive"}</button>
             </div>
           </div>`,
                 )
@@ -783,11 +784,11 @@ function detailView(state: AppState, item: Item, status?: ItemStatus): string {
           : ""
       }
       <div class="actions">
-        <button type="button" data-action="edit-item" data-id="${item.id}">Edit</button>
+        <button type="button" data-action="edit-item" data-id="${escapeHtml(item.id)}">Edit</button>
         ${
           item.packKind === "drum"
-            ? `<button type="button" data-action="swap" data-id="${item.id}">Swap drum</button>`
-            : `<button type="button" data-action="consume" data-id="${item.id}">${item.useFromRooms ? logActionLabel(item) : `Used ${escapeHtml(countLabelOf(item))}`}</button>`
+            ? `<button type="button" data-action="swap" data-id="${escapeHtml(item.id)}">Swap drum</button>`
+            : `<button type="button" data-action="consume" data-id="${escapeHtml(item.id)}">${item.useFromRooms ? logActionLabel(item) : `Used ${escapeHtml(countLabelOf(item))}`}</button>`
         }
       </div>
       <div class="history">

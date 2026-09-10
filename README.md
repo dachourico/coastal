@@ -76,6 +76,19 @@ The **Supply** tab (also at `/supply/`) tracks nutrients, trellis, rockwool, and
 orders. Those counts stay in this browser and are separate from room layouts.
 Download a supply backup to move them to another device.
 
+The **Calendar** tab (also at `/calendar/`) displays a Google Calendar in agenda,
+week, or month view, with Flower 3, Flower 4, Veg, and Service shown together by default, color coded
+by calendar. Use the calendar filter to focus on a room or Service. In Google Calendar on a computer, open **Settings → your
+calendar → Integrate calendar**, copy the **Calendar ID**, and save it in the
+tab's Calendar settings. An embed URL with one `src` calendar is also accepted.
+The selection is saved in this browser; coworkers enter the same ID on their
+devices. Do not paste a secret iCal address. Private calendars require each
+viewer to sign in to a Google account with permission to see the calendar.
+If browser privacy settings prevent the embedded calendar from displaying,
+use **Open Google Calendar**. Google hosts the calendar and handles access;
+Coastal does not store event data or Google credentials. Edit events in Google
+Calendar. Separate Google Tasks lists are not part of this embedded view.
+
 Includes clone and harvest CSV generation, Excel/CSV batch import, table placement
 (including drag and drop), auto-fill, suggested split, table resizing, room creation,
 JSON layout interchange with the desktop app, and plant assignment CSV export.

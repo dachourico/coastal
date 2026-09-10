@@ -25,8 +25,13 @@ export function loadState(): AppState {
   }
 }
 
-export function saveState(state: AppState): void {
-  localStorage.setItem(KEY, JSON.stringify(state));
+export function saveState(state: AppState): boolean {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function exportBackup(state: AppState): string {

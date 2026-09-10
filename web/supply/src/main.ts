@@ -53,10 +53,14 @@ view.coverUntil = state.settings.nextOrderDate || addDays(todayDate(), 70);
 view.bufferDays = state.settings.defaultLeadTimeDays;
 
 function persist(message?: string, error = false): void {
-  saveState(state);
+  const saved = saveState(state);
+  if (!saved) {
+    view.flash = "Updated for this session, but browser storage is full or unavailable. Download a backup to keep the change.";
+    view.flashError = true;
+  }
   if (message) {
-    view.flash = message;
-    view.flashError = error;
+    if (saved) view.flash = message;
+    view.flashError = error || !saved;
   }
   render();
 }
