@@ -72,6 +72,10 @@ used. The public link opens the tools without an account. Each visit starts with
 and added strains are saved in that browser. Coworkers share layouts using **Save
 layout** and **Open layout**; edits are not synchronized between devices.
 
+The **Supply** tab (also at `/supply/`) tracks nutrients, trellis, rockwool, and
+orders. Those counts stay in this browser and are separate from room layouts.
+Download a supply backup to move them to another device.
+
 Includes clone and harvest CSV generation, Excel/CSV batch import, table placement
 (including drag and drop), auto-fill, suggested split, table resizing, room creation,
 JSON layout interchange with the desktop app, and plant assignment CSV export.

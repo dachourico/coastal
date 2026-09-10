@@ -1,6 +1,8 @@
 """Build only explicitly selected application assets; never publish inventories."""
 from pathlib import Path
+import os
 import shutil
+import subprocess
 
 web = Path(__file__).resolve().parents[1]
 root = web.parent
@@ -18,4 +20,10 @@ for name in ('coastal_core.py', 'room_layout.py', 'inventory_import.py',
     shutil.copy2(root / name, target)
 shutil.copy2(web / 'bridge.py', dist / 'python/bridge.py')
 shutil.copy2(root / 'assets/coastal-healing-logo.svg', dist / 'logo.svg')
+
+supply = web / 'supply'
+npm = 'npm.cmd' if os.name == 'nt' else 'npm'
+if not (supply / 'node_modules').exists():
+    subprocess.check_call([npm, 'ci'], cwd=supply)
+subprocess.check_call([npm, 'run', 'build'], cwd=supply)
 print('Built Coastal browser app in web/dist')
