@@ -358,6 +358,20 @@ form[data-from-rooms="no"] .only-rooms-cut {
   background: #fafbf8;
 }
 
+.room-card legend {
+  font-family: Manrope, sans-serif;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.schedule-jobs {
+  margin: 8px 0 12px;
+}
+
+.schedule-jobs .room-card {
+  min-width: 0;
+}
+
 .room-card.offline {
   opacity: 0.78;
 }
@@ -652,7 +666,8 @@ dialog menu {
   }
 
   .form-grid,
-  .form-grid.three {
+  .form-grid.three,
+  .schedule-jobs {
     grid-template-columns: 1fr;
   }
 

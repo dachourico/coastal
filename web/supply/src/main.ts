@@ -14,7 +14,7 @@ import {
   uid,
   unitsPerBuyOf,
 } from "./model";
-import { advanceCutRotation, qtyKindForItem, roomQty, suggestedBlocks, tablesFromCounts } from "./rooms";
+import { advanceJobRotation, jobForKind, qtyKindForItem, roomQty, suggestedBlocks, tablesFromCounts } from "./rooms";
 import { pingIfNeeded, requestNotifyPermission } from "./notify";
 import {
   defaultGenerated,
@@ -370,8 +370,14 @@ function applyRoomsForm(data: FormData): void {
   state.settings.netOverhangInches = num(data, "overhang") ?? 6;
   state.settings.trellisLayers = num(data, "layers") ?? 3;
   state.settings.cutIntervalWeeks = num(data, "interval") ?? 5;
-  state.settings.nextCutRoomId = String(data.get("next-room") || "");
-  state.settings.nextCutDate = String(data.get("next-cut") || "");
+  state.settings.nextCloneRoomId = String(data.get("next-clone-room") || "");
+  state.settings.nextCloneDate = String(data.get("next-clone-date") || "");
+  state.settings.nextBlockRoomId = String(data.get("next-block-room") || "");
+  state.settings.nextBlockDate = String(data.get("next-block-date") || "");
+  state.settings.nextTrellisRoomId = String(data.get("next-trellis-room") || "");
+  state.settings.nextTrellisDate = String(data.get("next-trellis-date") || "");
+  state.settings.nextCutRoomId = state.settings.nextTrellisRoomId;
+  state.settings.nextCutDate = state.settings.nextTrellisDate;
   for (const room of state.rooms) {
     room.name = String(data.get(`room-name-${room.id}`) || room.name).trim() || room.name;
     room.online = data.get(`room-online-${room.id}`) === "on";
@@ -504,7 +510,7 @@ function handleSubmit(action: string, form: HTMLFormElement): void {
         }
       }
       if (item.useFromRooms && data.get("advance") === "on" && roomId) {
-        advanceCutRotation(state, roomId, date);
+        advanceJobRotation(state, jobForKind(kind), roomId, date);
       }
       view.dialog = null;
       persist(

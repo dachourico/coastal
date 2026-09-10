@@ -118,6 +118,12 @@ export interface Settings {
   cutIntervalWeeks: number;
   nextCutRoomId: string;
   nextCutDate: string;
+  nextCloneRoomId: string;
+  nextCloneDate: string;
+  nextBlockRoomId: string;
+  nextBlockDate: string;
+  nextTrellisRoomId: string;
+  nextTrellisDate: string;
   blockRate: number;
 }
 
@@ -310,8 +316,34 @@ export const DEFAULT_SETTINGS: Settings = {
   cutIntervalWeeks: 5,
   nextCutRoomId: "flower-3",
   nextCutDate: "",
+  nextCloneRoomId: "flower-3",
+  nextCloneDate: "",
+  nextBlockRoomId: "flower-3",
+  nextBlockDate: "",
+  nextTrellisRoomId: "flower-3",
+  nextTrellisDate: "",
   blockRate: 0.95,
 };
+
+export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
+  const incoming = raw ?? {};
+  const merged: Settings = { ...DEFAULT_SETTINGS, ...incoming };
+  if (!("nextCloneRoomId" in incoming) && !("nextCloneDate" in incoming)) {
+    merged.nextCloneRoomId = merged.nextCutRoomId;
+    merged.nextCloneDate = merged.nextCutDate;
+  }
+  if (!("nextBlockRoomId" in incoming) && !("nextBlockDate" in incoming)) {
+    merged.nextBlockRoomId = merged.nextCutRoomId;
+    merged.nextBlockDate = merged.nextCutDate;
+  }
+  if (!("nextTrellisRoomId" in incoming) && !("nextTrellisDate" in incoming)) {
+    merged.nextTrellisRoomId = merged.nextCutRoomId;
+    merged.nextTrellisDate = merged.nextCutDate;
+  }
+  merged.nextCutRoomId = merged.nextTrellisRoomId || merged.nextCutRoomId;
+  merged.nextCutDate = merged.nextTrellisDate || merged.nextCutDate;
+  return merged;
+}
 
 export function defaultRooms(): Room[] {
   return [
@@ -457,7 +489,7 @@ export function normalizeItem(raw: Partial<Item>): Item {
 export function emptyState(): AppState {
   return {
     version: 1,
-    settings: { ...DEFAULT_SETTINGS },
+    settings: normalizeSettings(DEFAULT_SETTINGS),
     items: [],
     events: [],
     orders: [],
