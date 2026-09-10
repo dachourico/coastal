@@ -10,10 +10,11 @@ import type {
 } from "./types";
 import {
   firstUncoveredCut,
+  jobForKind,
   qtyFromPlan,
   qtyKindForItem,
   qtyUnit,
-  resolveNextCut,
+  resolveNextJob,
   roomNeedInWindow,
 } from "./rooms";
 
@@ -92,14 +93,14 @@ export function eventSize(item: Item): number {
 
 export function cutSize(state: AppState, item: Item): number {
   if (item.useFromRooms) {
-    const next = resolveNextCut(state);
+    const next = resolveNextJob(state, jobForKind(qtyKindForItem(item)));
     return next ? qtyFromPlan(next, qtyKindForItem(item)) : 0;
   }
   return eventSize(item);
 }
 
 export function nextScheduledDate(state: AppState, item: Item): string {
-  if (item.useFromRooms) return resolveNextCut(state)?.date ?? todayDate();
+  if (item.useFromRooms) return resolveNextJob(state, jobForKind(qtyKindForItem(item)))?.date ?? todayDate();
   const weeks = item.useEveryWeeks && item.useEveryWeeks > 0 ? item.useEveryWeeks : 5;
   if (item.nextUseDate && item.nextUseDate >= todayDate()) return item.nextUseDate;
   const consumes = itemEvents(state, item.id).filter((event) => event.type === "consume");
@@ -341,7 +342,7 @@ export function itemStatus(state: AppState, item: Item): ItemStatus {
     }
   } else if (item.usageMode === "scheduled") {
     const kind = qtyKindForItem(item);
-    const next = item.useFromRooms ? resolveNextCut(state) : null;
+    const next = item.useFromRooms ? resolveNextJob(state, jobForKind(qtyKindForItem(item))) : null;
     const need = cutSize(state, item);
     const weeks = item.useFromRooms
       ? state.settings.cutIntervalWeeks || 5
@@ -413,7 +414,7 @@ export function itemStatus(state: AppState, item: Item): ItemStatus {
     leadTimeDays,
     alert,
     coveredByOrder,
-    nextCut: item.useFromRooms ? resolveNextCut(state) : null,
+    nextCut: item.useFromRooms ? resolveNextJob(state, jobForKind(qtyKindForItem(item))) : null,
   };
 }
 

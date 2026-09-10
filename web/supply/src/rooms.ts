@@ -1,5 +1,7 @@
 import type { AppState, CutPlan, Item, Room, RoomQtyKind, Settings } from "./types";
 
+export type RoomJob = "clones" | "blocks" | "trellis";
+
 function todayDate(): string {
   const d = new Date();
   const tz = d.getTimezoneOffset() * 60000;
@@ -43,6 +45,44 @@ export function blockRateOf(settings: Settings): number {
 export function suggestedBlocks(room: Room, settings: Settings): number {
   if (room.blocks != null && room.blocks > 0) return room.blocks;
   return Math.round((room.cubes || 0) * blockRateOf(settings));
+}
+
+export function jobForKind(kind: RoomQtyKind): RoomJob {
+  if (kind === "cubes") return "clones";
+  if (kind === "blocks" || kind === "blocks4" || kind === "blocks6") return "blocks";
+  return "trellis";
+}
+
+export function jobLabel(job: RoomJob): string {
+  if (job === "clones") return "Clones";
+  if (job === "blocks") return "Blocks";
+  return "Trellis";
+}
+
+export function scheduleOf(settings: Settings, job: RoomJob): { roomId: string; date: string } {
+  if (job === "clones") return { roomId: settings.nextCloneRoomId, date: settings.nextCloneDate };
+  if (job === "blocks") return { roomId: settings.nextBlockRoomId, date: settings.nextBlockDate };
+  return {
+    roomId: settings.nextTrellisRoomId || settings.nextCutRoomId,
+    date: settings.nextTrellisDate || settings.nextCutDate,
+  };
+}
+
+export function setSchedule(settings: Settings, job: RoomJob, roomId: string, date: string): void {
+  if (job === "clones") {
+    settings.nextCloneRoomId = roomId;
+    settings.nextCloneDate = date;
+    return;
+  }
+  if (job === "blocks") {
+    settings.nextBlockRoomId = roomId;
+    settings.nextBlockDate = date;
+    return;
+  }
+  settings.nextTrellisRoomId = roomId;
+  settings.nextTrellisDate = date;
+  settings.nextCutRoomId = roomId;
+  settings.nextCutDate = date;
 }
 
 export function qtyKindForItem(item: Item): RoomQtyKind {
@@ -137,20 +177,21 @@ export function planForRoom(room: Room, settings: Settings, date: string): CutPl
   };
 }
 
-export function resolveNextCut(state: AppState): CutPlan | null {
+export function resolveNextJob(state: AppState, job: RoomJob): CutPlan | null {
   const rooms = onlineRooms(state);
   if (!rooms.length) return null;
-  const wanted = state.settings.nextCutRoomId;
-  const room = rooms.find((entry) => entry.id === wanted) ?? rooms[0];
-  const date =
-    state.settings.nextCutDate && state.settings.nextCutDate >= todayDate()
-      ? state.settings.nextCutDate
-      : todayDate();
+  const wanted = scheduleOf(state.settings, job);
+  const room = rooms.find((entry) => entry.id === wanted.roomId) ?? rooms[0];
+  const date = wanted.date && wanted.date >= todayDate() ? wanted.date : todayDate();
   return planForRoom(room, state.settings, date);
 }
 
-export function upcomingCuts(state: AppState, coverUntil: string, extra = 12): CutPlan[] {
-  const first = resolveNextCut(state);
+export function resolveNextCut(state: AppState): CutPlan | null {
+  return resolveNextJob(state, "trellis");
+}
+
+export function upcomingCuts(state: AppState, coverUntil: string, extra = 12, job: RoomJob = "trellis"): CutPlan[] {
+  const first = resolveNextJob(state, job);
   if (!first) return [];
   const weeks = state.settings.cutIntervalWeeks || 5;
   const plans: CutPlan[] = [];
@@ -177,7 +218,7 @@ export function firstUncoveredCut(
 ): CutPlan | null {
   let remaining = onHand;
   const far = addDays(todayDate(), 365 * 3);
-  for (const cut of upcomingCuts(state, far, 24)) {
+  for (const cut of upcomingCuts(state, far, 24, jobForKind(kind))) {
     const need = qtyFromPlan(cut, kind);
     if (need <= 0) continue;
     if (remaining + 1e-9 < need) return cut;
@@ -191,15 +232,22 @@ export function roomNeedInWindow(
   coverUntil: string,
   kind: RoomQtyKind = "ft",
 ): number {
-  return upcomingCuts(state, coverUntil).reduce((sum, cut) => sum + qtyFromPlan(cut, kind), 0);
+  return upcomingCuts(state, coverUntil, 12, jobForKind(kind)).reduce(
+    (sum, cut) => sum + qtyFromPlan(cut, kind),
+    0,
+  );
+}
+
+export function advanceJobRotation(state: AppState, job: RoomJob, fromRoomId: string, cutDate: string): void {
+  const current = scheduleOf(state.settings, job);
+  if (current.roomId && current.roomId !== fromRoomId) return;
+  const next = nextOnlineRoom(state, fromRoomId);
+  const weeks = state.settings.cutIntervalWeeks || 5;
+  setSchedule(state.settings, job, next?.id ?? "", addDays(cutDate, weeks * 7));
 }
 
 export function advanceCutRotation(state: AppState, fromRoomId: string, cutDate: string): void {
-  if (state.settings.nextCutRoomId && state.settings.nextCutRoomId !== fromRoomId) return;
-  const next = nextOnlineRoom(state, fromRoomId);
-  const weeks = state.settings.cutIntervalWeeks || 5;
-  state.settings.nextCutRoomId = next?.id ?? "";
-  state.settings.nextCutDate = addDays(cutDate, weeks * 7);
+  advanceJobRotation(state, "trellis", fromRoomId, cutDate);
 }
 
 export function tablesFromCounts(eight: number, six: number, four: number): Room["tables"] {

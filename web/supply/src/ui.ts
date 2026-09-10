@@ -16,16 +16,20 @@ import {
 import {
   cutPreview,
   describeTables,
+  jobForKind,
+  jobLabel,
   logActionLabel,
   netFtForRoom,
   onlineRooms,
   qtyKindForItem,
   qtyFromPlan,
-  resolveNextCut,
+  resolveNextJob,
   roomQty,
+  scheduleOf,
   suggestedBlocks,
   tableCounts,
   upcomingCuts,
+  type RoomJob,
 } from "./rooms";
 
 export interface View {
@@ -406,17 +410,34 @@ function renderCatalog(state: AppState): string {
   `;
 }
 
+function roomOptionsHtml(state: AppState, selectedId: string): string {
+  const rooms = onlineRooms(state);
+  if (!rooms.length) return `<option value="">No online rooms yet</option>`;
+  const fallback = rooms[0].id;
+  return rooms
+    .map((room) => {
+      const selected = selectedId === room.id || (!selectedId && room.id === fallback);
+      return `<option value="${escapeHtml(room.id)}" ${selected ? "selected" : ""}>${escapeHtml(room.name)}</option>`;
+    })
+    .join("");
+}
+
+function jobPreviewBits(job: RoomJob, cut: { ft: number; cubes: number; blocks: number; blocks4: number; blocks6: number }): string {
+  if (job === "clones") return cut.cubes ? `${formatNumber(cut.cubes, 0)} cubes` : "No cubes yet";
+  if (job === "blocks") {
+    const bits = [];
+    if (cut.blocks4) bits.push(`${cut.blocks4} 4"`);
+    if (cut.blocks6) bits.push(`${cut.blocks6} 6"`);
+    if (!bits.length && cut.blocks) bits.push(`~${cut.blocks} blocks`);
+    return bits.join(" · ") || "No blocks yet";
+  }
+  return cut.ft ? `${formatNumber(cut.ft, 0)} ft` : "No net yet";
+}
+
 function renderRooms(state: AppState): string {
   const s = state.settings;
-  const next = resolveNextCut(state);
   const rooms = [...state.rooms].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-  const far = upcomingCuts(state, "9999-12-31", 6);
-  const roomOptions = onlineRooms(state)
-    .map(
-      (room) =>
-        `<option value="${escapeHtml(room.id)}" ${s.nextCutRoomId === room.id || (!s.nextCutRoomId && next?.roomId === room.id) ? "selected" : ""}>${escapeHtml(room.name)}</option>`,
-    )
-    .join("");
+  const jobs: RoomJob[] = ["clones", "blocks", "trellis"];
   const blockPct = Math.round(blockRateDisplay(s.blockRate));
 
   const cards = rooms
@@ -456,14 +477,19 @@ function renderRooms(state: AppState): string {
     })
     .join("");
 
-  const cuts = far
-    .map((cut) => {
-      const bits = [`${formatNumber(cut.ft, 0)} ft`];
-      if (cut.cubes) bits.push(`${cut.cubes} cubes`);
-      if (cut.blocks4) bits.push(`${cut.blocks4} 4"`);
-      if (cut.blocks6) bits.push(`${cut.blocks6} 6"`);
-      if (cut.slabs) bits.push(`${cut.slabs} slabs`);
-      return `<div class="stat"><b>${escapeHtml(cut.roomName)}</b><small>${escapeHtml(formatDate(cut.date))} · ${escapeHtml(bits.join(" · "))}</small></div>`;
+  const cuts = jobs
+    .map((job) => {
+      const upcoming = upcomingCuts(state, "9999-12-31", 6, job);
+      const first = upcoming[0];
+      const later = upcoming
+        .slice(1, 3)
+        .map((cut) => `${cut.roomName} ${formatDate(cut.date)}`)
+        .join(" · ");
+      return `<div class="stat"><b>${escapeHtml(jobLabel(job))}</b><small>${
+        first
+          ? `${escapeHtml(first.roomName)} · ${escapeHtml(formatDate(first.date))} · ${escapeHtml(jobPreviewBits(job, first))}${later ? ` · then ${escapeHtml(later)}` : ""}`
+          : "Turn a room online and add tables or media"
+      }</small></div>`;
     })
     .join("");
 
@@ -479,12 +505,24 @@ function renderRooms(state: AppState): string {
           <label>Extra net each end (inches)<input type="number" min="0" step="0.5" name="overhang" value="${escapeHtml(s.netOverhangInches)}" /></label>
           <label>Layers per table<input type="number" min="1" step="1" name="layers" value="${escapeHtml(s.trellisLayers)}" /></label>
           <label>Weeks between rooms<input type="number" min="1" step="1" name="interval" value="${escapeHtml(s.cutIntervalWeeks)}" /></label>
-          <label>Next room<select name="next-room">${roomOptions || `<option value="">No online rooms yet</option>`}</select></label>
-          <label>Next date<input type="date" name="next-cut" value="${escapeHtml(s.nextCutDate)}" /></label>
           <label>Blocks from cubes (%)<input type="number" min="1" max="150" step="1" name="block-rate" value="${blockPct}" /></label>
         </div>
+        <p class="hint">Clones, planting into blocks, and hanging trellis each have their own next date. They still rotate rooms every ${escapeHtml(s.cutIntervalWeeks || 5)} weeks.</p>
+        <div class="form-grid three schedule-jobs">
+          ${jobs
+            .map((job) => {
+              const sched = scheduleOf(s, job);
+              const prefix = job === "clones" ? "clone" : job === "blocks" ? "block" : "trellis";
+              return `<fieldset class="room-card">
+                <legend>Next ${escapeHtml(jobLabel(job).toLowerCase())}</legend>
+                <label>Room<select name="next-${prefix}-room">${roomOptionsHtml(state, sched.roomId)}</select></label>
+                <label>Date<input type="date" name="next-${prefix}-date" value="${escapeHtml(sched.date)}" /></label>
+              </fieldset>`;
+            })
+            .join("")}
+        </div>
         <p class="hint">${escapeHtml(cutPreview(state))}</p>
-        <div class="order-summary">${cuts || `<div class="stat"><b>—</b><small>Turn a room online and add tables or media</small></div>`}</div>
+        <div class="order-summary">${cuts}</div>
         <div class="room-grid">${cards}</div>
       </form>
     </section>
@@ -641,7 +679,8 @@ function itemForm(item?: Item, duplicating = false): string {
 function consumeForm(state: AppState, item: Item): string {
   const count = countLabelOf(item);
   const kind = qtyKindForItem(item);
-  const next = item.useFromRooms ? resolveNextCut(state) : null;
+  const job = jobForKind(kind);
+  const next = item.useFromRooms ? resolveNextJob(state, job) : null;
   const amount = item.useFromRooms
     ? next
       ? qtyFromPlan(next, kind)
@@ -663,12 +702,12 @@ function consumeForm(state: AppState, item: Item): string {
       : `Used ${escapeHtml(count)}`;
   const hint = item.useFromRooms
     ? kind === "cubes"
-      ? "Type how many clones you took. Then how many went into 4\" or 6\" blocks — often around 95%, sometimes extra."
+      ? "Type how many clones you took. If you plant into blocks on a later day, log that from the block item."
       : kind === "slabs"
         ? "Count slabs you set. A bundle is 12. Type slabs, not bundles."
         : kind === "blocks4" || kind === "blocks6" || kind === "blocks"
-          ? "Type how many blocks you planted, not cases."
-          : "We’ll subtract that room’s trellis footage."
+          ? "Type how many blocks you planted, not cases. This date is separate from clone day and trellis day."
+          : "We’ll subtract that room’s trellis footage. This date is separate from clone day and block day."
     : "If you forget, a later audit will still correct the shelf.";
   const blocksDefault =
     kind === "cubes" && next ? next.blocks4 || next.blocks6 || next.blocks : 0;
@@ -687,7 +726,7 @@ function consumeForm(state: AppState, item: Item): string {
       ${
         item.useFromRooms
           ? `<label>Room<select name="roomId">${roomOptions || `<option value="">No online rooms</option>`}</select></label>
-             <label class="check-row"><input type="checkbox" name="advance" ${kind === "ft" ? "checked" : ""} /> This was the scheduled next room — rotate after</label>`
+             <label class="check-row"><input type="checkbox" name="advance" checked /> This was the scheduled next ${job === "clones" ? "clone" : job === "blocks" ? "block" : "trellis"} room — rotate after</label>`
           : ""
       }
       <div class="form-grid">
@@ -707,7 +746,7 @@ function consumeForm(state: AppState, item: Item): string {
                 : ""
             }
              <label>How many blocks planted<input type="number" min="0" step="1" name="blocks" value="${blocksDefault || ""}" placeholder="optional" />
-             <p class="hint">Leave blank if you’re only logging cubes today.</p>`
+             <p class="hint">Leave blank if you’re only logging cubes today. Planting into blocks has its own date on the Rooms tab.</p>`
           : ""
       }
       <label>Note<input name="note" placeholder="optional" /></label>

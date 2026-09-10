@@ -1,4 +1,4 @@
-import { defaultRooms, emptyState, ensureMediaCatalog, normalizeItem, normalizeRoom, type AppState } from "./types";
+import { defaultRooms, emptyState, ensureMediaCatalog, normalizeItem, normalizeRoom, normalizeSettings, type AppState } from "./types";
 
 const KEY = "coastal-supply:v1";
 
@@ -12,7 +12,7 @@ export function loadState(): AppState {
     }
     return {
       version: 1,
-      settings: { ...emptyState().settings, ...parsed.settings },
+      settings: normalizeSettings(parsed.settings),
       items: (parsed.items ?? []).map((item) => normalizeItem(item)),
       events: parsed.events ?? [],
       orders: parsed.orders ?? [],
@@ -43,7 +43,7 @@ export function importBackup(raw: string): AppState {
   if (parsed.version !== 1) throw new Error("This backup file is not recognized.");
   return {
     version: 1,
-    settings: { ...emptyState().settings, ...parsed.settings },
+    settings: normalizeSettings(parsed.settings),
     items: ensureMediaCatalog((parsed.items ?? []).map((item) => normalizeItem(item))).items,
     events: parsed.events ?? [],
     orders: parsed.orders ?? [],
