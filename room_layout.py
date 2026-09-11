@@ -417,6 +417,42 @@ class RoomLayout:
                     break
         return placed_total
 
+    def table_slots(self, prefix: str) -> list[str]:
+        """Resolve a complete table identifier, never a partial room prefix."""
+        slots = [s for s in self.room.slot_ids() if s.rsplit("|", 2)[0] + "|" == prefix]
+        if not slots:
+            raise ValueError("That table no longer exists")
+        return slots
+
+    def clear_table(self, prefix: str) -> int:
+        slots = self.table_slots(prefix)
+        count = sum(slot in self.assignments for slot in slots)
+        for slot in slots:
+            self.clear_slot(slot)
+        return count
+
+    def swap_tables(self, source: str, destination: str) -> None:
+        """Swap atomically, preserving gaps when possible and packing only to fit."""
+        left, right = self.table_slots(source), self.table_slots(destination)
+        if source == destination:
+            return
+        left_values = [self.assignments.get(s) for s in left]
+        right_values = [self.assignments.get(s) for s in right]
+        if (sum(v is not None for v in left_values) > len(right)
+                or sum(v is not None for v in right_values) > len(left)):
+            raise ValueError("Cannot swap: one table has more plants than the other table can hold")
+
+        def fit(values, slots):
+            if any(v is not None for v in values[len(slots):]):
+                values = [v for v in values if v is not None]
+            return {s: v for s, v in zip(slots, values) if v is not None}
+
+        moved = {**fit(left_values, right), **fit(right_values, left)}
+        for slot in left + right:
+            self.assignments.pop(slot, None)
+        self.assignments.update(moved)
+        # Swapping changes no per-batch counts.
+
     def clear_slot(self, slot: str) -> None:
         batch_id = self.assignments.pop(slot, None)
         if batch_id is not None:

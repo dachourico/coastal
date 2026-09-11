@@ -139,3 +139,47 @@ test('storage failure keeps current scans exportable and displays a warning',asy
   const text=await readFile(await (await event).path(),'utf8');
   expect(text).toContain('"Manual addition - no tag",""');
 });
+
+test('suffix-free scans record whole tags, retain focus, and sound only at target', async({page}) => {
+  await setup(page);
+  await page.evaluate(() => { window.beeps=0; scanning.beep=async()=>{window.beeps++;}; });
+  await page.clock.install();
+  await page.locator('#scan-start').click();
+  const input = page.locator('#scan-tag');
+  for(let i=0; i<32; i++) {
+    await page.keyboard.type('000123');
+    await page.clock.runFor(100);
+    await expect(page.locator('#scan-progress')).toContainText(`${i} / 32`);
+    await page.keyboard.type('456789');
+    await page.clock.runFor(201);
+    await expect(page.locator('#scan-progress')).toContainText(`${i+1} / 32`);
+    await expect(input).toHaveValue('');
+    if(i<31) await expect(input).toBeFocused();
+    expect(await page.evaluate(()=>window.beeps)).toBe(i===31 ? 1 : 0);
+  }
+  await expect(page.locator('#scan-completed')).toBeVisible();
+  expect(await page.evaluate(()=>scanning.records.map(entry=>entry.tag))).toEqual(Array(32).fill('000123456789'));
+  await page.clock.runFor(500);
+  expect(await page.evaluate(()=>window.beeps)).toBe(1);
+});
+
+test('scan suffixes do not double count and pausing cancels pending input', async({page}) => {
+  await setup(page);
+  await page.clock.install();
+  await page.locator('#scan-start').click();
+  const input = page.locator('#scan-tag');
+  for(const suffix of ['Enter','Tab']) {
+    await input.fill(suffix);
+    await input.press(suffix);
+    await expect(input).toBeFocused();
+    await page.clock.runFor(500);
+  }
+  await expect(page.locator('#scan-progress')).toContainText('2 / 32');
+  await input.fill('CANCELLED');
+  await page.locator('#scan-start').click();
+  await page.clock.runFor(500);
+  await page.locator('#scan-start').click();
+  await page.clock.runFor(500);
+  await expect(page.locator('#scan-progress')).toContainText('2 / 32');
+  await expect(input).toHaveValue('');
+});

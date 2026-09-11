@@ -23,6 +23,45 @@ from strain_colors import strain_color, strain_css_class
 
 
 class RoomLayoutTests(unittest.TestCase):
+    def test_table_swaps_preserve_batches_gaps_and_clear_counts(self):
+        layout = RoomLayout()
+        prefixes = list(dict.fromkeys(s.rsplit("|", 2)[0] + "|" for s in layout.room.slot_ids()))
+        left, right = prefixes[:2]
+        a, b = layout.add_batch("A", 20), layout.add_batch("B", 20)
+        ls, rs = layout.table_slots(left), layout.table_slots(right)
+        layout.place_across(a.id, [ls[0], ls[2]])
+        layout.place_across(b.id, [rs[1]])
+        layout.swap_tables(left, right)
+        self.assertEqual(layout.assignments, {rs[0]: a.id, rs[2]: a.id, ls[1]: b.id})
+        self.assertEqual(layout.placed_count(a.id), 2)
+        self.assertEqual(layout.clear_table(left), 1)
+        self.assertEqual(layout.remaining_count(b.id), 20)
+        layout.swap_tables(right, left)
+        self.assertEqual(layout.assignments, {ls[0]: a.id, ls[2]: a.id})
+        layout.swap_tables(left, left)
+        self.assertEqual(layout.placed_total, 2)
+        with self.assertRaises(ValueError):
+            layout.clear_table("L1|")
+
+    def test_table_swap_rejects_overflow_without_mutation_and_packs_to_fit(self):
+        layout = RoomLayout()
+        prefixes = list(dict.fromkeys(s.rsplit("|", 2)[0] + "|" for s in layout.room.slot_ids()))
+        left, right = prefixes[:2]
+        level, rack, label = right.rstrip("|").split("|")
+        layout.room = resize_table(layout.room, int(level[1:]), int(rack[1:]), label, 1, 2)
+        slots = layout.table_slots(left)
+        batch = layout.add_batch("A", 10)
+        layout.place_across(batch.id, slots[-3:])
+        before = dict(layout.assignments)
+        with self.assertRaisesRegex(ValueError, "Cannot swap"):
+            layout.swap_tables(left, right)
+        self.assertEqual(layout.assignments, before)
+        self.assertEqual(layout.placed_count(batch.id), 3)
+        layout.clear_slot(slots[-3])
+        layout.swap_tables(left, right)
+        self.assertEqual(set(layout.assignments), set(layout.table_slots(right)))
+        self.assertEqual(layout.placed_count(batch.id), 2)
+
     def test_strain_colors_are_stable_distinct_and_readable(self):
         wedding_cake = strain_color("Wedding Cake")
         self.assertEqual(wedding_cake, strain_color("wedding cake"))

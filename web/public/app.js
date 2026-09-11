@@ -1,6 +1,6 @@
 const $ = selector => document.querySelector(selector);
 const worker = new Worker('worker.js', {type: 'module'});
-let sequence = 0, state, selected, editing, busy = false;
+let sequence = 0, state, selected, editing, busy = false, movingTable = null;
 const pending = new Map();
 const scanning = new ScanPage();
 window.addEventListener('coastal-restore', event => run('restore',{content:JSON.stringify(event.detail)},'Saved move history restored.'));
@@ -26,22 +26,28 @@ async function run(action, data={}, message='Updated.') {
 }
 function abbreviation(strain) { return (state.strains[strain] || strain.slice(0,4)).toUpperCase(); }
 function render(syncScanning = true) {
+  cancelTableMove();
   if(syncScanning) scanning.sync(state);
   $('#room').replaceChildren(...state.rooms.map(room=>{const option=el('option',room.name);option.value=room.name;return option;}));$('#room').value=state.room.name;
   $('#strains').replaceChildren(...Object.keys(state.strains).sort().map(name=>{const option=el('option');option.value=name;return option;}));
   if(!state.batches.some(b=>b.id===selected))selected=state.batches[0]?.id;
   $('#batches').replaceChildren(...state.batches.map(batch=>{
     const card=el('div',undefined,'batch'+(selected===batch.id?' selected':''));card.style.setProperty('--batch',color(batch.id));card.draggable=true;card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`${batch.strain}, ${batch.remaining} unplaced`);
-    card.append(el('strong',`${abbreviation(batch.strain)} · ${batch.strain}`),el('small',`${batch.remaining} unplaced / ${batch.count} plants`));
+    card.append(el('strong',`${abbreviation(batch.strain)} · ${batch.strain} · Batch ${batch.id}`),el('small',`${batch.count-batch.remaining} placed · ${batch.remaining} unplaced / ${batch.count} plants`));
     card.onclick=()=>{selected=batch.id;render();};card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selected=batch.id;render();}};
     card.ondragstart=e=>{selected=batch.id;e.dataTransfer.setData('text/plain',String(batch.id));};
     const remove=el('button','Remove');remove.onclick=e=>{e.stopPropagation();if(confirm(`Remove ${batch.strain} and its placements?`))run('remove',{batch:batch.id});};card.append(remove);return card;
   }));
   $('#summary').textContent=`${state.placed} / ${state.capacity} positions filled`;
+  $('#batch-totals').replaceChildren(...state.batches.map(batch=>{
+    const item=el('span',`Batch ${batch.id} · ${batch.strain}: ${batch.count-batch.remaining} placed / ${batch.count} total`,'batch-total');
+    item.style.setProperty('--batch',color(batch.id));return item;
+  }));
+  if(!state.batches.length)$('#batch-totals').append(el('span','No plants placed. Add a batch to get started.'));
   $('#room-view').replaceChildren();
   for(const [level,racks] of Object.entries(state.room.levels)) {
     $('#room-view').append(el('h3',`LEVEL ${level}`,'level-title'));
-    const grid=el('div',undefined,'racks');grid.style.setProperty('--rack-count',Object.keys(racks).length);
+    const grid=el('div',undefined,'racks');grid.style.setProperty('--table-count',Math.max(...Object.values(racks).map(tables=>tables.length)));grid.style.setProperty('--rack-count',Object.keys(racks).length);
     for(const [rack,tables] of Object.entries(racks)) {
       const column=el('div',undefined,'rack');column.append(el('p',`RACK ${rack}`));
       const positions=Math.max(...tables.map(t=>Math.ceil((t.plant_count??t.rows*t.plants_per_row)/t.rows)));
@@ -49,25 +55,64 @@ function render(syncScanning = true) {
       column.style.minWidth=`${Math.max(130,positions*(Math.max(32,labelLength*8+8)+3)+16)}px`;
       for(const table of tables){
         const prefix=`L${level}|R${rack}|${table.label}|`;const card=el('div',undefined,'table');card.tabIndex=0;card.setAttribute('aria-label',`Place batch on level ${level}, rack ${rack}, ${table.label}`);
-        const place=()=>{if(selected)run('place',{batch:selected,prefix},'Batch placed in available positions.');else status('Add a plant batch first.',true);};card.onclick=place;card.onkeydown=e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();place();}};
-        card.ondragover=e=>e.preventDefault();card.ondrop=e=>{e.preventDefault();const batch=Number(e.dataTransfer.getData('text/plain'));if(batch)run('place',{batch,prefix});};
-        const top=el('div',undefined,'table-top');top.append(el('span',table.label));const edit=el('button','Edit');edit.onclick=e=>{e.stopPropagation();editing={level,rack,label:table.label};$('#resize-form').elements.rows.value=table.rows;$('#resize-form').elements.capacity.value=table.plant_count??table.rows*table.plants_per_row;$('#resize-dialog').showModal();};top.append(edit);card.append(top);
+        const place=()=>{if(movingTable){const source=movingTable;cancelTableMove();run('swap_tables',{source,destination:prefix},'Table contents swapped.');return;}if(selected)run('place',{batch:selected,prefix},'Batch placed in available positions.');else status('Add a plant batch first.',true);};card.onclick=place;card.onkeydown=e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();place();}};
+        card.dataset.prefix=prefix;
+        card.ondragover=e=>{e.preventDefault();card.classList.add('drop-target');};
+        card.ondragleave=()=>card.classList.remove('drop-target');
+        card.ondrop=e=>{e.preventDefault();e.stopPropagation();card.classList.remove('drop-target');const source=e.dataTransfer.getData('application/x-coastal-table');cancelTableMove();if(source){run('swap_tables',{source,destination:prefix},'Table contents swapped.');return;}const batch=Number(e.dataTransfer.getData('text/plain'));if(batch)run('place',{batch,prefix});};
+        const top=el('div',undefined,'table-top');top.append(el('span',table.label));const edit=el('button','Edit');edit.onclick=e=>{e.stopPropagation();editing={level,rack,label:table.label};$('#resize-form').elements.rows.value=table.rows;$('#resize-form').elements.capacity.value=table.plant_count??table.rows*table.plants_per_row;$('#resize-dialog').showModal();};top.append(edit);
+        const clear=el('button','Clear');clear.title='Return all plants on this table to their batches';clear.onclick=e=>{e.stopPropagation();cancelTableMove();run('clear_table',{prefix},'Table cleared; plants returned to their batches.');};top.append(clear);
+        const move=el('button','Move');move.className='table-move';move.draggable=true;move.title='Drag to swap contents, or click then select a destination table';
+        move.onclick=e=>{e.stopPropagation();const wasMoving=movingTable===prefix;cancelTableMove();if(!wasMoving){movingTable=prefix;card.classList.add('moving');$('#table-move-help').textContent=`Moving level ${level}, rack ${rack}, ${table.label}. Click a destination table to swap contents. Press Escape to cancel.`;}};
+        move.ondragstart=e=>{e.stopPropagation();cancelTableMove();e.dataTransfer.setData('application/x-coastal-table',prefix);e.dataTransfer.effectAllowed='move';card.classList.add('moving');};
+        move.ondragend=()=>cancelTableMove();top.append(move);card.append(top);
         const capacity=table.plant_count??table.rows*table.plants_per_row;
         for(let row=1;row<=table.rows;row++) {
           const line=el('div',undefined,'plant-row');const count=Math.floor(capacity/table.rows)+(row<=capacity%table.rows?1:0);
           for(let position=1;position<=count;position++) {
-            const slot=`${prefix}row${row}|plant${position}`, batchId=state.assignments[slot];const batch=state.batches.find(b=>b.id===batchId);const dot=el('button',batch?abbreviation(batch.strain):'·','plant'+(batch?' occupied':''));dot.style.setProperty('--batch',color(batchId));dot.title=`Level ${level}, rack ${rack}, ${table.label}, row ${row}, position ${position}: ${batch?`${batch.strain} (batch ${batchId}); click to remove`:'empty'}`;dot.setAttribute('aria-label',dot.title);dot.onclick=e=>{if(batchId){e.stopPropagation();run('clear_slot',{slot});}};line.append(dot);
+            const slot=`${prefix}row${row}|plant${position}`, batchId=state.assignments[slot];const batch=state.batches.find(b=>b.id===batchId);const dot=el('button',batch?abbreviation(batch.strain):'·','plant'+(batch?' occupied':''));dot.style.setProperty('--batch',color(batchId));dot.title=`Level ${level}, rack ${rack}, ${table.label}, row ${row}, position ${position}: ${batch?`${batch.strain} (batch ${batchId}); click to remove`:'empty'}`;dot.setAttribute('aria-label',dot.title);dot.onclick=e=>{if(movingTable){e.stopPropagation();place();return;}if(batchId){e.stopPropagation();run('clear_slot',{slot});}};line.append(dot);
           }card.append(line);
         }column.append(card);
       }grid.append(column);
     }$('#room-view').append(grid);
   }
+  requestAnimationFrame(fitRoom);
 }
 function showTab(name) {
+  cancelTableMove();
   scanning.pause(); scanning.render();
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==name);
+  document.body.classList.toggle('planner-active',name==='planner');
+  requestAnimationFrame(fitRoom);
 }
+function cancelTableMove(){
+  movingTable=null;
+  document.querySelectorAll('.moving,.drop-target').forEach(node=>node.classList.remove('moving','drop-target'));
+  $('#table-move-help').textContent='Drag a table’s Move handle onto another table to swap all its plants, or click Move then the destination. Clear returns that table’s plants to their batches.';
+}
+document.addEventListener('keydown',event=>{if(event.key==='Escape')cancelTableMove();});
+function fitRoom(){
+  const viewport=$('#room-viewport'), room=$('#room-view');
+  if(!viewport.clientWidth||!room.children.length)return;
+  room.style.transform='none';
+  room.style.width=`${viewport.clientWidth}px`;
+  room.style.height=`${viewport.clientHeight}px`;
+  room.style.gridTemplateRows=Object.keys(state.room.levels).map(()=> 'auto minmax(0, 1fr)').join(' ');
+  room.dataset.scale='1';
+}
+new ResizeObserver(()=>requestAnimationFrame(fitRoom)).observe($('#room-viewport'));
+window.addEventListener('resize',fitRoom);
+document.body.classList.add('planner-active');
+$('#print-layout').onclick=()=>window.print();
+window.addEventListener('beforeprint',()=>{
+  // Freeze the same room view on one landscape sheet, retaining plant colors.
+  const room=$('#room-view');
+  const scale=Math.min(1,940/room.scrollWidth,600/room.scrollHeight);
+  document.documentElement.style.setProperty('--print-room-scale',scale);
+  document.documentElement.style.setProperty('--print-room-height',`${room.scrollHeight*scale}px`);
+});
+window.addEventListener('afterprint',fitRoom);
 for(const button of document.querySelectorAll('[data-tab]'))button.onclick=()=>{
   showTab(button.dataset.tab);
   const url=new URL(location.href);

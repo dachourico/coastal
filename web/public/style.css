@@ -36,3 +36,91 @@ nav{flex-wrap:wrap}.google-calendar{width:100%;height:720px;height:75vh;min-heig
 @keyframes completion-pop{from{opacity:0;transform:scale(.65) rotate(-5deg)}to{opacity:1;transform:scale(1) rotate(0)}}
 @keyframes completion-rays{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){#scan-completed[open] .completion-card,#scan-completed[open] .completion-card::before{animation:none}}
+
+/* Keep the entire room in view; batch controls and totals scroll independently. */
+body.planner-active{height:100dvh;min-height:0;overflow:hidden}
+.planner-active header{height:64px;padding:8px 24px}.planner-active header img{width:40px;height:40px}
+.planner-active main{height:calc(100dvh - 64px);max-width:none;padding:10px 20px;display:flex;flex-direction:column;min-height:0}
+.planner-active .intro,.planner-active footer{display:none}.planner-active nav{margin-top:0;padding-bottom:8px;flex-wrap:wrap;gap:6px}
+.planner-active #status{margin:6px 0;min-height:18px;font-size:12px;color:#fff}.planner-active #status.error{color:#fff;background:#8c2929}
+.planner-active #application{flex:1;min-height:0;display:flex;flex-direction:column}
+#planner{min-height:0;flex:1;display:flex;flex-direction:column;padding:12px}
+#planner>.hint{margin:4px 0}#planner>.toolbar{gap:6px}#planner>.toolbar label{margin:0}#planner>.toolbar button,#planner>.toolbar .file-button{padding:7px 10px}
+#planner .planner-grid{flex:1;min-height:0;grid-template-columns:215px minmax(0,1fr);gap:14px;margin-top:8px}
+#planner aside{overflow-y:auto;padding-right:12px}#planner aside h2{margin-bottom:10px}
+#planner .floor{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#planner .floor>.toolbar{gap:5px}#planner .floor>.toolbar button{padding:6px 8px;font-size:12px}#summary{font-size:14px}
+#planner .floor>.hint{margin:4px 0;font-size:11px;line-height:1.3}
+#room-viewport{position:relative;flex:1;min-height:0;overflow:hidden}
+#room-view{position:absolute;left:0;top:0;transform-origin:top left;padding:2px}
+#room-view .racks{overflow:visible;grid-template-columns:repeat(var(--rack-count),minmax(max-content,1fr));gap:8px}
+#room-view .level-title{margin:5px 0 2px}#room-view .rack>p{margin:3px 0}
+#room-view .table{margin-bottom:5px;padding:5px}#room-view .table-top{margin-bottom:3px}
+#room-view .table-top button{padding:3px}#room-view .plant{min-width:28px;height:18px;font-size:11px}#room-view .plant-row{margin:1px 0;gap:2px}
+.table-move{cursor:grab}.table.moving{outline:3px solid #315c40}.table.drop-target{outline:3px dashed #315c40;background:#dcebcf}
+#layout-totals{flex:none;border-top:1px solid #dfe4d9;padding-top:5px;margin-top:4px}
+#layout-totals h3{margin:0 0 5px;font-size:13px}#batch-totals{display:flex;flex-wrap:wrap;gap:5px 12px;max-height:76px;overflow:auto;font-size:12px}
+.batch-total{border-left:5px solid var(--batch);padding:3px 6px;background:#f5f7f0;border-radius:3px}
+@media(max-width:700px){.planner-active header{height:48px;padding:5px 10px}.planner-active header strong{font-size:18px}.planner-active header img{width:32px;height:32px}.planner-active header span{font-size:10px}.planner-active main{height:calc(100dvh - 48px);padding:5px}.planner-active nav button,.planner-active nav a{padding:6px;font-size:11px}#planner{padding:7px}#planner .planner-grid{grid-template-columns:135px minmax(0,1fr);gap:7px}#planner aside{border-bottom:0;border-right:1px solid #e5e9e0;padding-right:7px}#planner>.toolbar label{min-width:100px}#planner>.toolbar button,#planner>.toolbar .file-button{font-size:11px;padding:5px}#planner>.hint{font-size:10px}#planner .floor>.hint{font-size:10px}#batch-totals{max-height:62px;font-size:10px}}
+@page{size:landscape;margin:10mm}
+@media print{
+ html,body,body.planner-active{height:auto;min-height:0;overflow:visible;background:white!important}
+ .planner-active main,main{display:block;height:auto;width:940px;max-width:none;padding:0;margin:0}
+ header,nav,.intro,footer,#status,aside,#planner>.hint,.floor>.hint,.toolbar button,.file-button,#layout-totals,.table-top button{display:none!important}
+ #application,#planner,#planner .planner-grid,#planner .floor{display:block!important;height:auto;overflow:visible;padding:0;margin:0;border:0}
+ #planner>.toolbar label{display:block;margin:0 0 8px}#room{border:0;padding:0;font-size:18px;appearance:none}#summary{margin:0 0 8px}
+ #room-viewport{display:block;overflow:hidden;height:var(--print-room-height);width:940px;break-inside:avoid}
+ #room-view{position:relative;transform:none!important;zoom:var(--print-room-scale);break-inside:avoid}
+ #room-view,#room-view *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .table.moving,.table.drop-target{outline:none}
+}
+
+/* The planner is the workspace; inventory controls open over it on demand. */
+.planner-active header{display:none}
+.planner-active main{height:100dvh;padding:5px 8px}
+.planner-active nav{gap:5px;padding-bottom:4px}
+.planner-active nav button,.planner-active nav a{padding:6px 10px;font-size:12px}
+.planner-active #status{margin:3px 0;min-height:15px;font-size:11px}
+#planner{padding:7px;border-radius:8px}
+#planner>.hint,#planner .floor>.hint{display:none}
+#planner>.toolbar label{min-width:120px;display:flex;align-items:center;gap:8px}
+#planner>.toolbar select{padding:5px;width:150px}
+#planner .planner-grid{display:block;position:relative;margin-top:5px}
+#planner .floor{height:100%}
+#planner aside{position:absolute;z-index:5;left:0;top:0;bottom:0;width:285px;max-width:90%;padding:14px;background:white;border:1px solid #cbd6c3;border-radius:8px;box-shadow:4px 4px 24px #19342033;overflow:auto}
+#planner .floor>.toolbar{flex:none;margin-bottom:4px}
+#room-view{display:grid;gap:3px;padding:0}
+#room-view .racks{min-height:0;grid-template-columns:repeat(var(--rack-count),minmax(0,1fr));gap:7px;padding:0}
+#room-view .rack{min-width:0!important;min-height:0;display:grid;grid-template-rows:auto repeat(var(--table-count),minmax(0,1fr));gap:3px}
+#room-view .level-title{margin:0;font-size:12px;line-height:14px;color:#315c40}
+#room-view .rack>p{margin:0;font-size:10px;line-height:12px}
+#room-view .table{min-width:0;min-height:0;margin:0;padding:3px;display:flex;flex-direction:column;gap:2px;border-radius:5px}
+#room-view .table-top{flex:none;margin:0;font-size:11px;line-height:12px;gap:2px}
+#room-view .table-top button{font-size:10px;line-height:12px;padding:0 2px}
+#room-view .plant-row{flex:1;min-height:0;margin:0;gap:2px}
+#room-view .plant{flex:1 1 0;width:0;min-width:0;min-height:0;height:auto;padding:0;font-size:clamp(8px,1vw,14px);overflow:hidden;border-radius:3px}
+#layout-totals{padding-top:3px;margin-top:4px;display:flex;align-items:baseline;gap:12px}
+#layout-totals h3{white-space:nowrap;margin:0;font-size:12px}
+#batch-totals{max-height:44px}
+@media(max-width:700px){
+ #planner>.toolbar{gap:3px}#planner>.toolbar button,#planner>.toolbar .file-button{padding:4px;font-size:10px}
+ #room-view .racks{gap:2px}#room-view .table{padding:1px;gap:1px}#room-view .table-top{flex-wrap:wrap;font-size:8px;line-height:9px}#room-view .table-top button{font-size:7px;line-height:9px;padding:0}
+ #room-view .plant{font-size:7px}#room-view .rack>p{font-size:8px}#layout-totals{display:block}
+}
+@media print{
+ #planner .floor>.toolbar{margin-bottom:4px}
+ #room-view{gap:3px}
+}
+
+/* Keep inventory alongside the room without covering any tables. */
+@media screen {
+ #planner .planner-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:10px}
+ #planner aside{position:static;width:auto;max-width:none;min-height:0;padding:8px 10px 8px 0;border:0;border-right:1px solid #dfe4d9;border-radius:0;box-shadow:none;overflow-y:auto}
+ #planner aside h2{margin-bottom:8px}#planner aside label{margin-bottom:8px}
+ #planner aside .batch{padding:8px;margin-top:8px}
+ #planner .floor{min-width:0}
+}
+@media screen and (max-width:700px){
+ #planner .planner-grid{grid-template-columns:140px minmax(0,1fr);gap:5px}
+ #planner aside{padding-right:5px}#planner aside input{padding:7px}
+}

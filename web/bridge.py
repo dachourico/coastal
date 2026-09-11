@@ -15,7 +15,7 @@ MAX_REQUEST_BYTES = 25 * 1024 * 1024
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 MAX_LAYOUT_BYTES = 2 * 1024 * 1024
 VALID_ACTIONS = {'state', 'generate', 'restore', 'room', 'add', 'import', 'place',
-                 'clear_slot', 'remove', 'autofill', 'split', 'clear_all', 'clear',
+                 'clear_slot', 'clear_table', 'swap_tables', 'remove', 'autofill', 'split', 'clear_all', 'clear',
                  'design', 'resize', 'strain', 'save', 'export'}
 
 def state():
@@ -74,6 +74,10 @@ def dispatch(raw):
             prefix = request['prefix']
             slots = [s for s in layout.room.snake_slot_ids() if s.startswith(prefix)]
             layout.place_across(int(request['batch']), slots)
+        elif action == 'clear_table':
+            layout.clear_table(request['prefix'])
+        elif action == 'swap_tables':
+            layout.swap_tables(request['source'], request['destination'])
         elif action == 'clear_slot':
             layout.clear_slot(request['slot'])
         elif action == 'remove':

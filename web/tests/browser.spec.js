@@ -38,3 +38,35 @@ test('Excel inventory import aggregates counts and preserves batches',async({pag
  await ready(page);await page.locator('#inventory-file').setInputFiles('tests/fixtures/inventory.xlsx');await expect(page.locator('.batch')).toContainText('Excel strain',{timeout:30000});await expect(page.locator('.batch')).toContainText('12 unplaced');await settled(page);
  await page.locator('#inventory-file').setInputFiles('tests/fixtures/inventory.xlsx');await expect(page.locator('.batch')).toHaveCount(2);await settled(page);
 });
+test('whole room fits, table contents swap and clear, batch usage updates, and layout prints',async({page})=>{
+ await ready(page);
+ for(const size of [{width:1280,height:720},{width:390,height:844}]){
+  await page.setViewportSize(size);
+  await expect.poll(()=>page.evaluate(()=>{
+   const view=document.querySelector('#room-viewport').getBoundingClientRect();
+   return [...document.querySelectorAll('#room-view .table')].every(node=>{const r=node.getBoundingClientRect();return r.left>=view.left-1&&r.right<=view.right+1&&r.top>=view.top-1&&r.bottom<=view.bottom+1&&r.bottom<=innerHeight;})&&document.documentElement.scrollWidth<=innerWidth;
+  })).toBe(true);
+ }
+ await page.setViewportSize({width:1280,height:800});
+ await expect.poll(()=>page.evaluate(()=>{const r=document.querySelector('#room-viewport').getBoundingClientRect();const b=document.querySelector('#planner-batches').getBoundingClientRect();return r.width>innerWidth*.7&&r.height>innerHeight*.65&&b.right<=r.left;})).toBe(true);
+ await expect(page.locator('#planner-batches')).toBeVisible();
+ const add=async(strain,count)=>{await page.locator('#strain').fill(strain);await page.locator('#count').fill(String(count));await page.locator('#batch-form button').click();await settled(page);await page.locator('.batch').last().click();};
+ const tables=page.locator('#room-view .table');
+ await add('Alpha',3);await tables.nth(0).click();await settled(page);
+ await add('Beta',2);await tables.nth(1).click();await settled(page);
+ await tables.nth(0).getByRole('button',{name:'Move',exact:true}).dragTo(tables.nth(1));
+ await expect(tables.nth(0).locator('.occupied')).toHaveCount(2);await expect(tables.nth(1).locator('.occupied')).toHaveCount(3);
+ await expect(tables.nth(1).locator('.occupied').first()).toHaveText('ALPH');
+ await expect(page.locator('#batch-totals')).toContainText('Alpha: 3 placed / 3 total');
+ await tables.nth(1).getByRole('button',{name:'Move',exact:true}).click();await tables.nth(2).click();await settled(page);
+ await expect(tables.nth(1).locator('.occupied')).toHaveCount(0);await expect(tables.nth(2).locator('.occupied')).toHaveCount(3);
+ await tables.nth(0).getByRole('button',{name:'Clear',exact:true}).click();await settled(page);
+ await expect(page.locator('#batch-totals')).toContainText('Beta: 0 placed / 2 total');await expect(page.locator('#summary')).toContainText('3 /');
+ await page.evaluate(()=>{window.print=()=>{window.printCalled=true;};});await page.locator('#print-layout').click();expect(await page.evaluate(()=>window.printCalled)).toBe(true);
+ await page.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));await page.emulateMedia({media:'print'});
+ await expect(page.locator('#room-view')).toBeVisible();await expect(page.locator('aside')).toBeHidden();
+ const pdf=await page.pdf({path:'test-results/room-layout.pdf',preferCSSPageSize:true,printBackground:true});
+ expect(pdf.toString('latin1').match(/\/Type \/Page\b/g)).toHaveLength(1);
+ await page.emulateMedia({media:'screen'});await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+ await page.screenshot({path:'test-results/room-layout-updated.png',fullPage:true});
+});

@@ -19,14 +19,27 @@ class ScanPage {
     const get = id => document.getElementById(id);
     this.get = get;
     get('scan-start').onclick = () => {
-      this.active = !this.active;
+      if(this.active) this.pause();
+      else this.active = true;
       if(this.active) {
         try { this.audio ||= new AudioContext(); this.audio.resume().catch(()=>{}); } catch {}
       }
       this.render();
       if(this.active) get('scan-tag').focus();
     };
-    get('scan-form').onsubmit = event => { event.preventDefault(); this.accept(get('scan-tag').value); get('scan-tag').value = ''; };
+    get('scan-form').onsubmit = event => { event.preventDefault(); this.submitTag(); };
+    // Keyboard scanners send a burst of characters, sometimes without a suffix.
+    // Wait for the burst to finish so one barcode produces exactly one entry.
+    get('scan-tag').oninput = () => {
+      clearTimeout(this.scanTimer);
+      if(this.active) this.scanTimer = setTimeout(() => this.submitTag(), 200);
+    };
+    get('scan-tag').onkeydown = event => {
+      if(event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        this.submitTag();
+      }
+    };
     get('scan-add').onclick = () => this.accept(null, true);
     get('scan-undo').onclick = () => {
       const session = this.sessions.get(this.batch), count = Number(get('scan-undo-count').value);
@@ -87,7 +100,14 @@ class ScanPage {
       item.append(label,restore,remove); return item;
     }));
   }
-  pause() { this.active = false; this.get('scan-tag').value = ''; }
+  submitTag() {
+    clearTimeout(this.scanTimer);
+    const input = this.get('scan-tag'), value = input.value;
+    input.value = '';
+    this.accept(value);
+    if(this.active && !input.disabled && !this.get('scanning').hidden) input.focus();
+  }
+  pause() { clearTimeout(this.scanTimer); this.active = false; this.get('scan-tag').value = ''; }
   sync(state, reset = false) {
     if(reset) { this.sessions.clear(); this.pause(); }
     this.room = state.room.name;

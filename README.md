@@ -63,6 +63,15 @@ without MSYS2 on PATH. It can also be run manually from GitHub Actions.
 
 ## Browser app (Cloudflare)
 
+The Room layouts tab fits every level and rack into the available screen space.
+Drag a table’s **Move** handle onto another table to swap all contents, including
+mixed batches, or click **Move** and then the destination. An empty destination
+moves the plants; swaps that exceed either table’s capacity leave both unchanged.
+**Clear** on a table returns its plants to their batches. **Plants used per batch**
+shows each batch’s placed count and total inventory. **Print layout** opens the
+browser print dialog with a single landscape page of the room and its plant colors.
+
+
 Live app: https://coastalcultivation.coastal-web.workers.dev
 
 The `web/` app runs the existing Python CSV and room-planning logic in a browser
@@ -123,8 +132,11 @@ batches and placements while keeping the current room design.
 ### Tag scanning (browser)
 
 Place plants in Room layouts, then open **Tag scanning**, choose a placed batch,
-and press **Start scanning**. Targets use the number actually placed in the room.
-Each nonempty barcode followed by Enter counts once, including repeated barcodes.
+and press **Start scanning**. Tags record automatically after 200 ms without new
+characters; no Enter is needed. The field clears and stays focused for the next
+scan. Scanners that send Enter or Tab also record immediately. Targets use the
+number actually placed in the room.
+Each nonempty scan counts once, including repeated barcodes.
 This checks quantities, not barcode uniqueness or whether a tag belongs to a strain.
 At the target the batch is marked satisfied and stops accepting scans. Select the
 next batch explicitly. **Undo latest entries** removes one or more recent entries;
