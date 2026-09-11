@@ -2,6 +2,8 @@ const $ = selector => document.querySelector(selector);
 const worker = new Worker('worker.js', {type: 'module'});
 let sequence = 0, state, selected, editing, busy = false;
 const pending = new Map();
+const scanning = new ScanPage();
+window.addEventListener('coastal-restore', event => run('restore',{content:JSON.stringify(event.detail)},'Saved move history restored.'));
 const status = (message, error = false) => { $('#status').textContent = message; $('#status').className = error ? 'error' : ''; };
 worker.onmessage = ({data}) => { const task = pending.get(data.id); if (!task) return; pending.delete(data.id); data.error ? task.reject(new Error(data.error)) : task.resolve(data.result); };
 worker.onerror = () => { for (const task of pending.values()) task.reject(new Error('Could not start Coastal. Check your connection and reload.')); pending.clear(); };
@@ -14,7 +16,7 @@ async function run(action, data={}, message='Updated.') {
   busy=true; $('#application').disabled=true;
   try {
     const result=await call({action,...data});
-    if(result.filename) download(result); else {state=result;render();}
+    if(result.filename) download(result); else {state=result;scanning.sync(state,['room','restore','design','clear_all'].includes(action));render(false);}
     if(!['generate','save','export'].includes(action)) {
       try { localStorage.setItem('coastal-strains',JSON.stringify(state.strains)); localStorage.setItem('coastal-rooms',JSON.stringify(state.rooms)); }
       catch { status('Updated, but room designs and strains could not be saved in this browser.',true); return; }
@@ -23,7 +25,8 @@ async function run(action, data={}, message='Updated.') {
   } catch(error) {status(error.message,true);} finally {busy=false;$('#application').disabled=false;}
 }
 function abbreviation(strain) { return (state.strains[strain] || strain.slice(0,4)).toUpperCase(); }
-function render() {
+function render(syncScanning = true) {
+  if(syncScanning) scanning.sync(state);
   $('#room').replaceChildren(...state.rooms.map(room=>{const option=el('option',room.name);option.value=room.name;return option;}));$('#room').value=state.room.name;
   $('#strains').replaceChildren(...Object.keys(state.strains).sort().map(name=>{const option=el('option');option.value=name;return option;}));
   if(!state.batches.some(b=>b.id===selected))selected=state.batches[0]?.id;
@@ -61,6 +64,7 @@ function render() {
   }
 }
 function showTab(name) {
+  scanning.pause(); scanning.render();
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==name);
 }
@@ -72,7 +76,7 @@ for(const button of document.querySelectorAll('[data-tab]'))button.onclick=()=>{
   history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`);
 };
 const startTab=new URLSearchParams(location.search).get('tab');
-if(startTab==='clone'||startTab==='harvest') showTab(startTab);
+if(startTab==='clone'||startTab==='harvest'||startTab==='scanning') showTab(startTab);
 const today=new Date(); const localDate=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;document.querySelectorAll('input[type=date]').forEach(input=>input.value=localDate);
 $('#batch-form').onsubmit=e=>{e.preventDefault();run('add',{strain:$('#strain').value,count:Number($('#count').value)},'Batch added. Select a table to place it.');};
 $('#room').onchange=async()=>{const name=$('#room').value;if(state.batches.length&&!confirm('Start an empty layout in this room? Save your current layout first if you need it later.')){$('#room').value=state.room.name;return;}await run('room',{name});};

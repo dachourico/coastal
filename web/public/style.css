@@ -11,3 +11,28 @@ nav{flex-wrap:wrap}.google-calendar{width:100%;height:720px;height:75vh;min-heig
 #calendar-legend{display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:20px}#calendar-legend>span{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}.calendar-dot{width:12px;height:12px;border-radius:50%;display:inline-block}#calendar-room{width:auto;max-width:100%}
 .calendar-panel{background:#fbfcf8;border-color:#d5dfcf;padding:clamp(18px,3vw,32px)}.calendar-toolbar{align-items:flex-end;border-bottom:1px solid #dfe7da;padding-bottom:18px}.calendar-toolbar h2{font-family:Manrope,sans-serif;font-size:22px;margin:0 0 4px}.calendar-subtitle{margin:0;color:#7b897b;font-size:12px}.calendar-toolbar>div:first-child{margin-right:auto}.calendar-toolbar select{width:auto;min-width:120px}.calendar-toolbar label{margin:0;min-width:100px}.calendar-toolbar>a{font-size:13px;font-weight:700;color:#315c40;text-decoration:none;padding:11px 2px}.calendar-toolbar>a:hover{text-decoration:underline}.google-calendar{background:#fff;border:1px solid #d5dfcf;box-shadow:0 12px 30px #25452b12;height:calc(100vh - 290px);min-height:600px;margin:22px 0 4px}.calendar-panel #status{margin:10px 0}.calendar-panel #calendar-settings{background:#fff;border:1px solid #dfe7da;border-radius:12px;padding:14px 18px}.calendar-panel #calendar-settings summary{color:#315c40}
 @media(max-width:700px){.calendar-toolbar{align-items:stretch}.calendar-toolbar>div:first-child{width:100%}.calendar-toolbar select,.calendar-toolbar label{flex:1}.calendar-toolbar>a{width:100%;text-align:center}.google-calendar{height:calc(100vh - 350px);min-height:520px}}
+
+.scan-batches{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 24px;padding:4px}
+.scan-batch{flex:0 0 auto;min-width:88px;height:30px;padding:0 10px;white-space:nowrap;border:1px solid var(--batch);border-radius:4px;color:#17251c;background:var(--batch);font-size:12px;font-weight:700;line-height:1}
+.scan-batch:hover{background:var(--batch);border-color:#446346}
+.scan-batch[aria-pressed=true]{outline:2px solid #243b32;outline-offset:2px}
+.scan-saves{list-style:none;padding:0;margin:12px 0}.scan-save-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid #e5e9e0;padding:10px 0;font-size:13px}.scan-save-item span{flex:1;min-width:220px}.scan-save-item button{padding:6px 10px;font-size:12px}
+
+#scan-completed{width:100vw;max-width:none;height:100dvh;max-height:none;margin:0;padding:24px;border:0;border-radius:0;background:transparent;color:white;overflow:auto}
+#scan-completed[open]{display:grid;place-items:center}
+#scan-completed::backdrop{background:#082a26e8;backdrop-filter:blur(8px)}
+#scan-confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.completion-card{position:relative;isolation:isolate;width:min(760px,100%);text-align:center;padding:clamp(24px,5vw,60px);border:3px solid #fcdf83;border-radius:32px;background:radial-gradient(ellipse at top,#7855cb 0%,#273d92 45%,#116c62 100%);box-shadow:0 0 80px #54efb94d,0 28px 90px #0008;overflow:hidden}
+.completion-card::before{content:'';position:absolute;inset:-60%;z-index:-1;background:repeating-conic-gradient(from 0deg,#ffffff0d 0deg 12deg,transparent 12deg 24deg);pointer-events:none}
+#scan-completed[open] .completion-card{animation:completion-pop .65s cubic-bezier(.2,.8,.25,1.15) both}
+#scan-completed[open] .completion-card::before{animation:completion-rays 16s linear infinite}
+.completion-star{font-size:70px;line-height:1;color:#ffe05a;text-shadow:0 0 30px #ffd94299}
+.completion-eyebrow{font-weight:800;letter-spacing:3px;font-size:12px;color:#bdfbe0;margin:20px 0}
+#scan-completed-title{font-family:Manrope,sans-serif;font-size:clamp(34px,7vw,86px);font-weight:800;line-height:1.05;letter-spacing:-2px;color:#fff2a0;text-shadow:0 5px 0 #3d277e,0 0 35px #ffcf3340;margin:0 0 24px}
+#scan-completed-detail{font-size:clamp(16px,2vw,22px);font-weight:700;overflow-wrap:anywhere}
+.completion-cheer{font-size:18px;color:#bdfbe0}
+#scan-completed-close{margin-top:16px;background:#ffe05a;color:#19382b;border:0;border-radius:12px;padding:16px 28px;font-size:16px;font-weight:800;box-shadow:0 6px 0 #bba230}
+#scan-completed-close:hover{background:#fff2a0}
+@keyframes completion-pop{from{opacity:0;transform:scale(.65) rotate(-5deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+@keyframes completion-rays{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#scan-completed[open] .completion-card,#scan-completed[open] .completion-card::before{animation:none}}

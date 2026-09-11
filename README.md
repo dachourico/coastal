@@ -119,3 +119,53 @@ data removes saved room designs and strains. Download layouts to keep your work.
 
 **Clear placements** returns plants to their batches. **Clear all** removes all
 batches and placements while keeping the current room design.
+
+### Tag scanning (browser)
+
+Place plants in Room layouts, then open **Tag scanning**, choose a placed batch,
+and press **Start scanning**. Targets use the number actually placed in the room.
+Each nonempty barcode followed by Enter counts once, including repeated barcodes.
+This checks quantities, not barcode uniqueness or whether a tag belongs to a strain.
+At the target the batch is marked satisfied and stops accepting scans. Select the
+next batch explicitly. **Undo latest entries** removes one or more recent entries;
+**Add one manually** corrects a missed scan. Undoing below the target allows a new
+completion alert after scanning resumes.
+
+Live counters remain only for this page. Reloads and replacement layouts clear
+counters; changing placements resets the affected batch. Move records are stored
+under one stable browser key and survive refreshes, offline use, and layout changes. Layout downloads do not
+include move records or scanning progress.
+
+**Download move records CSV** exports all saved scan entries across rooms and
+layouts, including incomplete batches. Each row includes a unique record ID,
+move batch ID, UTC timestamp, destination room, batch ID, strain, abbreviation,
+placed target at scan time, entry type, and tag. Manual additions have a blank
+tag and an explicit label. Repeated barcodes remain separate entries. Undo removes
+entries from the current page’s saved records; it cannot modify a CSV already
+downloaded. Previous-page records remain exportable, but their counters are not
+resumed and they cannot be undone from a fresh page.
+
+For Google Sheets use File → Import → Upload, select the CSV, and turn off
+“Convert text to numbers, dates, and formulas”. Import as text to preserve exact
+tags, leading zeros, and long numeric IDs. CSV fields are quoted and escaped, but
+quoting alone does not stop spreadsheet formula evaluation if conversion is on.
+Repeated exports contain previously exported records; use Record ID to deduplicate.
+Records are local to this browser and origin; clearing browser data or storage
+failure can remove them. The app requests persistent storage where available and
+reports failures in the tab. Download a CSV at the end of each move for an
+independent permanent copy; current-page records remain downloadable from memory.
+This is a record of scanned room moves, not a METRC transfer submission.
+
+USB keyboard scanners (including the Zebra DS2208-SR in keyboard mode) need an
+Enter suffix and focus in the tag field. Completion plays three tones on the
+computer and shows “Batch satisfied”. It plays the 7–11 second crop of
+“Best Cup of Coffee.mp3” from the local app asset. Use **Test completion song**
+before scanning
+and keep the computer volume on. The app does not control the scanner or require
+browser USB permissions. Its ordinary scan beep remains controlled by the scanner.
+If the scanner was previously switched to another USB mode, restore keyboard mode.
+
+Use **Save named move history** to keep a historical snapshot in the app. The
+snapshot includes the room layout, batches, placements, and tags recorded for
+that room. Saved histories can be restored or deleted from **Saved move
+histories**. Download the CSV as the independent backup copy.
