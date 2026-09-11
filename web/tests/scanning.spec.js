@@ -109,35 +109,37 @@ test('move CSV preserves tags, excludes undo, and survives reload with earlier r
   for(const tag of tags) { await page.locator('#scan-tag').fill(tag); await page.locator('#scan-tag').press('Enter'); }
   await page.locator('#scan-undo').click();
   await page.locator('#scan-add').click();
-  await expect(page.locator('#scan-record-status')).toContainText('4 move entries saved');
+  await expect(page.locator('#scan-record-status')).toContainText('3 scanned tags');
   async function csv() {
     const event=page.waitForEvent('download');
     await page.locator('#scan-export').click();
     return readFile(await (await event).path(),'utf8');
   }
   const first=await csv();
-  expect(first).toContain('"Plant tag"');
-  expect(first.split('\r\n')).toHaveLength(6);
+  expect(first).not.toContain('Plant tag');
+  expect(first.split('\r\n')).toHaveLength(4);
   expect(first.match(/000123456789012345678901/g)).toHaveLength(2);
   expect(first).toContain('"TAG,""quoted"""');
   expect(first).not.toContain('UNDO-ME');
-  expect(first).toContain('"Manual addition - no tag",""');
-  expect(first).toContain(`"${room}"`);
-  expect(first).toContain('"Scanning strain","SCAN","32"');
+  expect(first).not.toContain('Manual addition');
+  expect(first).not.toContain(room);
+  expect(first).not.toContain('Scanning strain');
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Ready.',{timeout:150000});
   await expect(page.locator('.scan-batch')).toHaveCount(0);
-  await expect(page.locator('#scan-record-status')).toContainText('4 move entries saved');
+  await expect(page.locator('#scan-record-status')).toContainText('3 scanned tags');
   expect(await csv()).toBe(first);
 });
 test('storage failure keeps current scans exportable and displays a warning',async({page})=>{
   await setup(page);
   await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new Error('quota');};});
-  await page.locator('#scan-add').click();
+  await page.locator('#scan-start').click();
+  await page.locator('#scan-tag').fill('QUOTA-TAG');
+  await page.locator('#scan-tag').press('Enter');
   await expect(page.locator('#scan-record-status')).toContainText('Download the CSV now');
   const event=page.waitForEvent('download'); await page.locator('#scan-export').click();
   const text=await readFile(await (await event).path(),'utf8');
-  expect(text).toContain('"Manual addition - no tag",""');
+  expect(text).toContain('"QUOTA-TAG"');
 });
 
 test('suffix-free scans record whole tags, retain focus, and sound only at target', async({page}) => {

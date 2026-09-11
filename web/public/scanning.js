@@ -213,7 +213,7 @@ class ScanPage {
     const records = [];
     this.historyError = false;
     try {
-      records.push(...this.records);
+      records.push(...this.records.filter(entry => entry.room === this.room && entry.tag !== null));
     } catch { this.historyError = true; }
     return records.sort((a,b)=>a.recordedAt.localeCompare(b.recordedAt));
   }
@@ -223,18 +223,19 @@ class ScanPage {
     this.get('scan-record-status').textContent = this.storageError
       ? 'Browser storage is unavailable or full. Download the CSV now to keep this page’s records.'
       : this.historyError ? 'Some saved records could not be read. Export includes only readable records and this page’s scans.'
-      : `${records.length} move entries saved in this browser (${records.filter(entry=>entry.tag === null).length} manual additions without tags). Download a CSV for a permanent copy.`;
+      : `${records.length} scanned tags for ${this.room}. Download a tag-only CSV.`;
   }
   exportRecords() {
     const records = this.allRecords();
     if(!records.length) return;
-    const rows = [['Record ID','Move batch ID','Recorded at (UTC)','Destination room','Batch ID','Strain','Abbreviation','Placed target','Entry type','Plant tag'],
-      ...records.map(entry=>[entry.id,entry.moveBatch,entry.recordedAt,entry.room,entry.batch,entry.strain,entry.abbreviation,entry.target,entry.tag === null ? 'Manual addition - no tag' : 'Scanned',entry.tag ?? ''])];
+    // One raw tag per line; omit headers and strain/batch metadata so this can
+    // be pasted directly into the destination system.
+    const rows = records.map(entry=>[entry.tag]);
     // Preserve tag strings exactly; import as text in Sheets to avoid conversion.
     const content = '\uFEFF' + rows.map(row=>row.map(value=>'"'+String(value).replaceAll('"','""')+'"').join(',')).join('\r\n')+'\r\n';
     download({filename:`coastal-room-moves-${new Date().toISOString().slice(0,10)}.csv`,content});
     this.renderRecordStatus();
-    this.message('Move records downloaded. Import as text in Google Sheets to preserve plant tags. Repeated exports include previously downloaded records.');
+    this.message(`Downloaded ${records.length} scanned tags for ${this.room}.`);
   }
   celebrate(session) {
     this.get('scan-completed-detail').textContent = `${session.strain} · ${session.scans.length}/${session.target} plants · ${this.room}`;
