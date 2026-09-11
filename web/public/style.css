@@ -62,7 +62,9 @@ body.planner-active{height:100dvh;min-height:0;overflow:hidden}
 #layout-totals h3{margin:0 0 5px;font-size:13px}#batch-totals{display:flex;flex-wrap:wrap;gap:5px 12px;max-height:76px;overflow:auto;font-size:12px}
 .batch-total{border-left:5px solid var(--batch);padding:3px 6px;background:#f5f7f0;border-radius:3px}
 @media(max-width:700px){.planner-active header{height:48px;padding:5px 10px}.planner-active header strong{font-size:18px}.planner-active header img{width:32px;height:32px}.planner-active header span{font-size:10px}.planner-active main{height:calc(100dvh - 48px);padding:5px}.planner-active nav button,.planner-active nav a{padding:6px;font-size:11px}#planner{padding:7px}#planner .planner-grid{grid-template-columns:135px minmax(0,1fr);gap:7px}#planner aside{border-bottom:0;border-right:1px solid #e5e9e0;padding-right:7px}#planner>.toolbar label{min-width:100px}#planner>.toolbar button,#planner>.toolbar .file-button{font-size:11px;padding:5px}#planner>.hint{font-size:10px}#planner .floor>.hint{font-size:10px}#batch-totals{max-height:62px;font-size:10px}}
-@page{size:landscape;margin:10mm}
+/* Explicit paper dimensions keep browser preview and the print job aligned. */
+@page{size:Letter landscape;margin:10mm}
+@page :first{size:Letter landscape;margin:10mm}
 @media print{
  html,body,body.planner-active{height:auto;min-height:0;overflow:visible;background:white!important}
  .planner-active main,main{display:block;height:auto;width:940px;max-width:none;padding:0;margin:0}
@@ -123,4 +125,16 @@ body.planner-active{height:100dvh;min-height:0;overflow:hidden}
 @media screen and (max-width:700px){
  #planner .planner-grid{grid-template-columns:140px minmax(0,1fr);gap:5px}
  #planner aside{padding-right:5px}#planner aside input{padding:7px}
+}
+
+#print-batch-summary{display:none}
+@media print{
+ #planner .floor{display:grid!important;grid-template-columns:760px 160px;column-gap:20px;align-items:start}
+ #planner .floor>.toolbar{grid-column:1 / -1}
+ #room-viewport{width:760px;grid-column:1}
+ #print-batch-summary{display:block;grid-column:2;grid-row:2;font-size:14px;color:#243b32}
+ #print-batch-summary h3{font-size:14px;margin:0 0 10px}
+ #print-batch-list{list-style:none;padding:0;margin:0}
+ #print-batch-list li{display:block;margin:0 0 5px;break-inside:avoid;font-variant-numeric:tabular-nums}
+ #print-batch-total{border-top:1px solid #cbd6c3;padding-top:8px;margin-top:10px;font-weight:700}
 }

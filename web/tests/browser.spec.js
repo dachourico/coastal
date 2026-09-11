@@ -65,6 +65,9 @@ test('whole room fits, table contents swap and clear, batch usage updates, and l
  await page.evaluate(()=>{window.print=()=>{window.printCalled=true;};});await page.locator('#print-layout').click();expect(await page.evaluate(()=>window.printCalled)).toBe(true);
  await page.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));await page.emulateMedia({media:'print'});
  await expect(page.locator('#room-view')).toBeVisible();await expect(page.locator('aside')).toBeHidden();
+ await expect(page.locator('#print-batch-summary')).toBeVisible();
+ await expect(page.locator('#print-batch-list li')).toHaveText(['ALPH 3','BETA 0']);
+ await expect(page.locator('#print-batch-total')).toHaveText('Total 3');
  const pdf=await page.pdf({path:'test-results/room-layout.pdf',preferCSSPageSize:true,printBackground:true});
  expect(pdf.toString('latin1').match(/\/Type \/Page\b/g)).toHaveLength(1);
  await page.emulateMedia({media:'screen'});await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));

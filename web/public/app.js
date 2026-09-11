@@ -44,6 +44,10 @@ function render(syncScanning = true) {
     item.style.setProperty('--batch',color(batch.id));return item;
   }));
   if(!state.batches.length)$('#batch-totals').append(el('span','No plants placed. Add a batch to get started.'));
+  $('#print-batch-list').replaceChildren(...state.batches.map(batch=>
+    el('li',`${abbreviation(batch.strain)} ${batch.count-batch.remaining}`)
+  ));
+  $('#print-batch-total').textContent=`Total ${state.placed}`;
   $('#room-view').replaceChildren();
   for(const [level,racks] of Object.entries(state.room.levels)) {
     $('#room-view').append(el('h3',`LEVEL ${level}`,'level-title'));
@@ -108,7 +112,7 @@ $('#print-layout').onclick=()=>window.print();
 window.addEventListener('beforeprint',()=>{
   // Freeze the same room view on one landscape sheet, retaining plant colors.
   const room=$('#room-view');
-  const scale=Math.min(1,940/room.scrollWidth,600/room.scrollHeight);
+  const scale=Math.min(1,760/room.scrollWidth,600/room.scrollHeight);
   document.documentElement.style.setProperty('--print-room-scale',scale);
   document.documentElement.style.setProperty('--print-room-height',`${room.scrollHeight*scale}px`);
 });
