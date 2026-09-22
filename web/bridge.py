@@ -6,26 +6,27 @@ from datetime import date
 from pathlib import Path
 from coastal_core import generate_clone_batches, generate_harvest
 from inventory_import import parse_batch_file
-from room_layout import BUILTIN_ROOMS, RoomLayout, RoomSpec, resize_table
+from room_layout import BUILTIN_ROOMS, LayoutHistory, RoomLayout, RoomSpec, resize_table
 from strain_catalog import strain_abbreviations
 
 layout = RoomLayout()
+history = LayoutHistory()
 rooms = dict(BUILTIN_ROOMS)
 MAX_REQUEST_BYTES = 25 * 1024 * 1024
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 MAX_LAYOUT_BYTES = 2 * 1024 * 1024
 VALID_ACTIONS = {'state', 'generate', 'restore', 'room', 'add', 'import', 'place',
                  'clear_slot', 'clear_table', 'swap_tables', 'remove', 'autofill', 'split', 'clear_all', 'clear',
-                 'design', 'resize', 'strain', 'save', 'export'}
+                 'design', 'resize', 'strain', 'save', 'export', 'undo', 'reset_history'}
 
 def state():
     return dict(room=layout.room.to_dict(), rooms=[r.to_dict() for r in rooms.values()],
                 batches=[dict(id=b.id, strain=b.strain, count=b.count,
                               remaining=layout.remaining_count(b.id)) for b in layout.batches.values()],
                 assignments=layout.assignments, capacity=layout.capacity,
-                placed=layout.placed_total, strains=strain_abbreviations)
+                placed=layout.placed_total, can_undo=history.can_undo, strains=strain_abbreviations)
 
-def dispatch(raw):
+def _dispatch(raw):
     if not isinstance(raw, str) or len(raw.encode('utf-8')) > MAX_REQUEST_BYTES:
         raise ValueError('Request is too large')
     global layout
@@ -49,7 +50,10 @@ def dispatch(raw):
             else:
                 output = generate_harvest(name, source, day)
             return json.dumps(dict(filename=output.name, content=output.read_text()))
-        if action == 'restore':
+        if action == 'undo':
+            history.undo(layout)
+            rooms[layout.room.name] = layout.room
+        elif action == 'restore':
             if len(request.get('content', '').encode('utf-8')) > MAX_LAYOUT_BYTES:
                 raise ValueError('Layout file is too large')
             path = directory / 'layout.json'
@@ -119,3 +123,29 @@ def dispatch(raw):
             (layout.save if action == 'save' else layout.export_csv)(path)
             return json.dumps(dict(filename=path.name, content=path.read_text()))
     return json.dumps(state())
+
+
+def dispatch(raw):
+    global history, layout
+    # Validate before decoding, including for callers outside the browser worker.
+    if not isinstance(raw, str) or len(raw.encode('utf-8')) > MAX_REQUEST_BYTES:
+        raise ValueError('Request is too large')
+    action = json.loads(raw)['action']
+    edits = {'add', 'import', 'place', 'clear_slot', 'clear_table', 'swap_tables',
+             'remove', 'autofill', 'split', 'clear_all', 'clear', 'resize'}
+    before = history.snapshot(layout) if action in edits else None
+    try:
+        result = _dispatch(raw)
+    except Exception:
+        if before is not None:
+            layout.__dict__.clear()
+            layout.__dict__.update(before)
+            rooms[layout.room.name] = layout.room
+        raise
+    if before is not None:
+        history.record(before, layout)
+    elif action in {'room', 'restore', 'design', 'reset_history'}:
+        history = LayoutHistory()
+    if action in edits | {'room', 'restore', 'design', 'undo', 'reset_history'}:
+        return json.dumps(state())
+    return result

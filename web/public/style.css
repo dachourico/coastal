@@ -138,3 +138,21 @@ body.planner-active{height:100dvh;min-height:0;overflow:hidden}
  #print-batch-list li{display:block;margin:0 0 5px;break-inside:avoid;font-variant-numeric:tabular-nums}
  #print-batch-total{border-top:1px solid #cbd6c3;padding-top:8px;margin-top:10px;font-weight:700}
 }
+
+/* Welcome and tool picker. */
+#welcome[hidden]{display:none}
+.welcome-active>header,.welcome-active main>.intro,.welcome-active main>nav,
+.welcome-active #status,.welcome-active #application,.welcome-active footer{display:none}
+.welcome-active main{max-width:1100px;padding:40px 24px}
+#welcome{min-height:calc(100dvh - 80px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
+.welcome-logo{width:clamp(160px,24vw,240px);height:auto;filter:drop-shadow(0 12px 32px #0005);animation:welcome-fade 1.2s ease-out both}
+#welcome h1{font-size:clamp(30px,4vw,44px);line-height:1.25;letter-spacing:-1px;margin:24px 0 32px;text-shadow:0 2px 16px #0009}
+#welcome h1 span{display:block;font-size:clamp(18px,2.5vw,26px);font-weight:500;letter-spacing:0;margin-top:10px}
+.welcome-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;width:100%;max-width:900px}
+.welcome-options button,.welcome-options a{display:flex;flex-direction:column;gap:8px;text-align:left;text-decoration:none;padding:24px;border:1px solid #ffffff70;border-radius:16px;background:#fffffff2;color:#243b32;box-shadow:0 8px 24px #0002;transition:background .2s,transform .2s}
+.welcome-options strong{font-size:18px}.welcome-options span{font-size:13px;line-height:1.5;font-weight:400;color:#536b5d}
+.welcome-options button:hover,.welcome-options a:hover{background:#eaf0e3;transform:translateY(-3px)}
+@keyframes welcome-fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:650px){.welcome-active main{padding:28px 18px}#welcome{min-height:calc(100dvh - 56px)}.welcome-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.welcome-options button,.welcome-options a{padding:18px 14px}.welcome-options strong{font-size:16px}}
+@media(max-width:360px){.welcome-options{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.welcome-logo{animation:none}.welcome-options button,.welcome-options a{transition:none}}

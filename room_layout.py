@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -302,6 +303,33 @@ class PlantBatch:
     id: int
     strain: str
     count: int
+
+
+class LayoutHistory:
+    """Bounded, in-memory undo snapshots for one room editing session."""
+
+    def __init__(self, limit: int = 100):
+        self.limit = limit
+        self._undo: list[dict] = []
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    def snapshot(self, layout: "RoomLayout") -> dict:
+        return deepcopy(vars(layout))
+
+    def record(self, before: dict, layout: "RoomLayout") -> None:
+        if before != vars(layout):
+            self._undo.append(before)
+            del self._undo[:-self.limit]
+
+    def undo(self, layout: "RoomLayout") -> bool:
+        if not self._undo:
+            return False
+        layout.__dict__.clear()
+        layout.__dict__.update(self._undo.pop())
+        return True
 
 
 class RoomLayout:

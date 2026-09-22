@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 const file=(name,text)=>({name,mimeType:'text/csv',buffer:Buffer.from(text)});
-async function ready(page){page.on('pageerror',e=>console.log('PAGE ERROR',e.message));page.on('requestfailed',r=>console.log('REQUEST FAILED',r.url(),r.failure()));await page.goto('/');await expect(page.locator('#status')).toHaveText('Ready.',{timeout:150000});await expect(page.locator('#application')).not.toHaveAttribute('disabled','');}
+async function ready(page){page.on('pageerror',e=>console.log('PAGE ERROR',e.message));page.on('requestfailed',r=>console.log('REQUEST FAILED',r.url(),r.failure()));await page.goto('/?tab=planner');await expect(page.locator('#status')).toHaveText('Ready.',{timeout:150000});await expect(page.locator('#application')).not.toHaveAttribute('disabled','');}
 async function settled(page){await expect(page.locator('#application')).not.toHaveAttribute('disabled','');await expect(page.locator('#status')).not.toHaveClass('error');}
 test('planner placement, fresh startup, both clear actions, JSON roundtrip, and CSV export',async({page})=>{
  await ready(page);await expect(page.locator('header strong')).toHaveText('Coastal Healing');await page.locator('#strain').fill('Test strain');await page.locator('#count').fill('12');await page.locator('#batch-form button').click();await expect(page.locator('.batch')).toContainText('12 unplaced');await page.locator('.table').first().click();await expect(page.locator('#summary')).toContainText('10 /');await settled(page);

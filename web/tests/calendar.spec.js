@@ -34,7 +34,7 @@ test('rejects untrusted and secret calendar links', async ({ page }) => {
 });
 
 test('calendar navigation is available from tools and supply', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?tab=planner');
   await page.getByRole('link', {name: 'Calendar', exact: true}).click();
   await expect(page).toHaveURL(/\/calendar\/$/);
   await page.getByRole('link', {name: 'Supply', exact: true}).click();

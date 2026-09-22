@@ -1,7 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 async function setup(page) {
-  await page.goto('/');
+  await page.goto('/?tab=planner');
   await expect(page.locator('#status')).toHaveText('Ready.', {timeout:150000});
   await page.locator('#strain').fill('Scanning strain');
   await page.locator('#count').fill('100');

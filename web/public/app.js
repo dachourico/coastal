@@ -27,6 +27,7 @@ async function run(action, data={}, message='Updated.') {
 function abbreviation(strain) { return (state.strains[strain] || strain.slice(0,4)).toUpperCase(); }
 function render(syncScanning = true) {
   cancelTableMove();
+  $('#undo').disabled=!state.can_undo;
   if(syncScanning) scanning.sync(state);
   $('#room').replaceChildren(...state.rooms.map(room=>{const option=el('option',room.name);option.value=room.name;return option;}));$('#room').value=state.room.name;
   $('#strains').replaceChildren(...Object.keys(state.strains).sort().map(name=>{const option=el('option');option.value=name;return option;}));
@@ -85,6 +86,8 @@ function render(syncScanning = true) {
 function showTab(name) {
   cancelTableMove();
   scanning.pause(); scanning.render();
+  document.body.classList.toggle('welcome-active',name==='welcome');
+  $('#welcome').hidden=name!=='welcome';
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==name);
   document.body.classList.toggle('planner-active',name==='planner');
@@ -95,7 +98,16 @@ function cancelTableMove(){
   document.querySelectorAll('.moving,.drop-target').forEach(node=>node.classList.remove('moving','drop-target'));
   $('#table-move-help').textContent='Drag a table’s Move handle onto another table to swap all its plants, or click Move then the destination. Clear returns that table’s plants to their batches.';
 }
-document.addEventListener('keydown',event=>{if(event.key==='Escape')cancelTableMove();});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape')cancelTableMove();
+  if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&!event.altKey&&event.key.toLowerCase()==='z') {
+    if($('#planner').hidden||document.querySelector('dialog[open]')||
+       event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))return;
+    event.preventDefault();
+    if(!busy&&state?.can_undo)run('undo',{},'Last layout change undone.');
+  }
+});
+$('#undo').onclick=()=>run('undo',{},'Last layout change undone.');
 function fitRoom(){
   const viewport=$('#room-viewport'), room=$('#room-view');
   if(!viewport.clientWidth||!room.children.length)return;
@@ -107,7 +119,7 @@ function fitRoom(){
 }
 new ResizeObserver(()=>requestAnimationFrame(fitRoom)).observe($('#room-viewport'));
 window.addEventListener('resize',fitRoom);
-document.body.classList.add('planner-active');
+
 $('#print-layout').onclick=()=>window.print();
 window.addEventListener('beforeprint',()=>{
   // Freeze the same room view on one landscape sheet, retaining plant colors.
@@ -117,15 +129,18 @@ window.addEventListener('beforeprint',()=>{
   document.documentElement.style.setProperty('--print-room-height',`${room.scrollHeight*scale}px`);
 });
 window.addEventListener('afterprint',fitRoom);
-for(const button of document.querySelectorAll('[data-tab]'))button.onclick=()=>{
-  showTab(button.dataset.tab);
+for(const button of document.querySelectorAll('[data-tab],[data-open-tab]'))button.onclick=()=>{
+  const tab=button.dataset.tab||button.dataset.openTab;
+  showTab(tab);
   const url=new URL(location.href);
-  if(button.dataset.tab==='planner') url.searchParams.delete('tab');
-  else url.searchParams.set('tab',button.dataset.tab);
+  if(tab==='welcome') url.searchParams.delete('tab');
+  else url.searchParams.set('tab',tab);
   history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`);
+  const heading=tab==='welcome'?$('#welcome-title'):$('#'+tab+' h2');
+  if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
 };
 const startTab=new URLSearchParams(location.search).get('tab');
-if(startTab==='clone'||startTab==='harvest'||startTab==='scanning') showTab(startTab);
+showTab(['planner','clone','harvest','scanning'].includes(startTab)?startTab:'welcome');
 const today=new Date(); const localDate=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;document.querySelectorAll('input[type=date]').forEach(input=>input.value=localDate);
 $('#batch-form').onsubmit=e=>{e.preventDefault();run('add',{strain:$('#strain').value,count:Number($('#count').value)},'Batch added. Select a table to place it.');};
 $('#room').onchange=async()=>{const name=$('#room').value;if(state.batches.length&&!confirm('Start an empty layout in this room? Save your current layout first if you need it later.')){$('#room').value=state.room.name;return;}await run('room',{name});};
@@ -140,4 +155,4 @@ document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>but
 $('#resize-form').onsubmit=e=>{e.preventDefault();const f=e.target.elements;$('#resize-dialog').close();run('resize',{...editing,rows:Number(f.rows.value),capacity:Number(f.capacity.value)});};
 $('#strain-form').onsubmit=e=>{e.preventDefault();const f=e.target.elements;$('#strain-dialog').close();run('strain',{name:f.name.value,abbreviation:f.abbreviation.value},'Strain saved to this browser’s catalog.');};
 $('#design-form').onsubmit=e=>{e.preventDefault();if(state.batches.length&&!confirm('Start a new empty room? Download your current layout first if you need it later.'))return;const f=e.target.elements;const spec={name:f.name.value,levels:{}};for(let l=1;l<=Number(f.levels.value);l++){spec.levels[l]={};for(let r=1;r<=Number(f.racks.value);r++)spec.levels[l][r]=Array.from({length:Number(f.tables.value)},(_,i)=>({label:`Table ${i+1}`,rows:Number(f.rows.value),plants_per_row:Math.ceil(Number(f.capacity.value)/Number(f.rows.value)),plant_count:Number(f.capacity.value)}));}$('#design-dialog').close();run('design',{spec},'Room created.');};
-(async()=>{try{state=await call({action:'state'});try{localStorage.removeItem('coastal-layout');const initialRoom=state.room.name;for(const room of JSON.parse(localStorage.getItem('coastal-rooms')||'[]'))await call({action:'design',spec:room});for(const [name,abbreviation] of Object.entries(JSON.parse(localStorage.getItem('coastal-strains')||'{}')))if(!state.strains[name])await call({action:'strain',name,abbreviation});state=await call({action:'room',name:initialRoom});status('Ready.');}catch(error){state=await call({action:'state'});status(`Could not load saved room designs or strains: ${error.message}. Open a saved layout or start a new one.`,true);}render();$('#application').disabled=false;}catch(error){status(error.message,true);}})();
+(async()=>{try{state=await call({action:'state'});try{localStorage.removeItem('coastal-layout');const initialRoom=state.room.name;for(const room of JSON.parse(localStorage.getItem('coastal-rooms')||'[]'))await call({action:'design',spec:room});for(const [name,abbreviation] of Object.entries(JSON.parse(localStorage.getItem('coastal-strains')||'{}')))if(!state.strains[name])await call({action:'strain',name,abbreviation});state=await call({action:'room',name:initialRoom});status('Ready.');}catch(error){state=await call({action:'state'});status(`Could not load saved room designs or strains: ${error.message}. Open a saved layout or start a new one.`,true);}state=await call({action:'reset_history'});render();$('#application').disabled=false;}catch(error){status(error.message,true);}})();
